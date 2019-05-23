@@ -2,7 +2,7 @@
 #SBATCH -p batch
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH --time=10:00:00
+#SBATCH --time=6:00:00
 #SBATCH --mem=4GB
 #SBATCH -o /fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/slurm/%x_%j.out
 #SBATCH -e /fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/slurm/%x_%j.err
@@ -40,7 +40,7 @@ echo -e "Bam file will be ${OUTBAM}"
 kallisto quant \
 	-b 50 \
 	--pseudobam \
-	--fr-stranded \
+	--rf-stranded \
 	-i ${IDX} \
 	-o ${OUTDIR} \
 	${F1} ${F2} | \
