@@ -2,7 +2,7 @@
 #SBATCH -p batch
 #SBATCH -N 1
 #SBATCH -n 16
-#SBATCH --time=24:00:00
+#SBATCH --time=1:00:00
 #SBATCH --mem=32GB
 #SBATCH -o /fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/slurm/%x_%j.out
 #SBATCH -e /fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/slurm/%x_%j.err
@@ -26,8 +26,8 @@ module load GCC/5.4.0-2.26
 module load Subread
 
 ## Genomic Data Files
-REFS=/data/biorefs/reference_genomes/ensembl-release-94/danio-rerio/
-GTF=${REFS}/Danio_rerio.GRCz11.94.chr.gtf
+REFS=/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/gtf_temp/
+GTF=${REFS}Danio_rerio.GRCz11.94.chr.gtf
 
 ## # The STAR genome index was generated manually on clarence after mounting /data/biorefs
 ## # STAR 2.6.0a was used for generation of the index, whilst STAR 2.5.3 will be
@@ -54,7 +54,7 @@ mkdir -p ${TRIMDATA}/FastQC
 mkdir -p ${TRIMDATA}/log
 
 ## Setup for genome alignment
-ALIGNDATA=${PROJROOT}/2_alignedData
+ALIGNDATA=${PROJROOT}/4_filteredData
 mkdir -p ${ALIGNDATA}/log
 mkdir -p ${ALIGNDATA}/bam
 mkdir -p ${ALIGNDATA}/FastQC
@@ -155,7 +155,6 @@ featureCounts -Q 10 \
   -s 2 \
   -T ${CORES} \
   -p \
-  --fracOverlap 1 \
   -a ${GTF} \
   -o ${ALIGNDATA}/featureCounts/counts.out ${sampleList}
 
