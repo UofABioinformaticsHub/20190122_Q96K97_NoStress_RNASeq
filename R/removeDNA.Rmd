@@ -1,0 +1,95 @@
+---
+title: "Genomic DNA Filtering"
+author: "L Baer"
+date: "21/05/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+## Setup
+```{r loadPackages}
+library(strandCheckR)
+library(tidyverse)
+library(pander)
+library(magrittr)
+library(Rsamtools)
+```
+
+```{r general}
+theme_set(theme_bw())
+tidyFilenames <- function(x){
+  x %>%
+    basename() %>%
+    str_remove("Aligned.sortedByCoord.out.bam")
+}
+lb <- as_labeller(tidyFilenames)
+```
+
+
+## Inspect Initial Data
+```{r files}
+files <- list.files("../2_alignedData/bam/", pattern = "bam$", full.names = TRUE)
+```
+This data set contains `r length(files)` files. 
+
+```{r win, cache=TRUE}
+win <- getWinFromBamFile(files, sequences = "9")
+```
+For data inspection reads from chromosome 9 were checked for strandedness using a sliding window across all files.
+A small "shoulder" of alignments which didn't match the pattern of strict strandedness was detected for most files. 
+
+```{r plotHist, fig.cap="Analysis of strandedness before filtering for genomic DNA"}
+plotHist(
+  windows = win, group_by = c("File","OverlapTranscript"), 
+  normalize_by = "File", scales = "free_y"
+) +
+  facet_wrap(~File, labeller = lb)
+```
+
+## Filter files
+
+```{r p}
+p <- 0.8
+```
+
+
+The alignments were then filtered to remove any putative gNDA, using a  threshold of `r p`.
+
+```{r filterDNA, cache=TRUE}
+for (i in seq_along(files)){
+  inFile <- files[i]
+  outFile <- file.path("../4_filteredData/bam/",
+                       basename(inFile))
+  statfile <- file.path("../4_filteredData/log/",
+                        inFile %>%
+                          basename() %>%
+                          str_remove("Aligned.+") %>%
+                          paste0("filterDNA.log"))
+  filterDNA(inFile, outFile, statfile, threshold = p)
+}
+```
+
+```{r postBam}
+postBam <- list.files(
+  "../4_filteredData/bam/",
+  pattern = "bam$",
+  full.names = TRUE) %>%
+  BamFileList()
+```
+
+```{r postWin, cache=TRUE}
+postWin <- getWinFromBamFile(postBam, sequences = "9")
+```
+
+```{r plotPostHist, fig.cap="Analysis of strandedness after filtering for genomic DNA"}
+plotHist(
+  windows = postWin, group_by = c("File","OverlapTranscript"), 
+  normalize_by = "File", scales = "free_y"
+) +
+  facet_wrap(~File, labeller = lb)
+```

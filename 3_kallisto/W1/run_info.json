@@ -1,0 +1,9 @@
+{
+	"n_targets": 83803,
+	"n_bootstraps": 50,
+	"n_processed": 46323169,
+	"kallisto_version": "0.43.1",
+	"index_version": 10,
+	"start_time": "Wed May 22 15:46:22 2019",
+	"call": "kallisto quant -b 50 --pseudobam --rf-stranded -i /data/biorefs/reference_genomes/ensembl-release-96/danio_rerio/kallisto/Danio_rerio.GRCz11.96.cdna.primary_assembly.with_unspliced_genes.idx -o /fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/3_kallisto/W1 /fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/1_trimmedData/fastq/W1_1.fq.gz /fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/1_trimmedData/fastq/W1_2.fq.gz"
+}

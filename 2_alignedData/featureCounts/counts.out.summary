@@ -1,0 +1,12 @@
+Status	/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/2_alignedData/bam/W3Aligned.sortedByCoord.out.bam	/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/2_alignedData/bam/Q5Aligned.sortedByCoord.out.bam	/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/2_alignedData/bam/W1Aligned.sortedByCoord.out.bam	/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/2_alignedData/bam/W4Aligned.sortedByCoord.out.bam	/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/2_alignedData/bam/W5Aligned.sortedByCoord.out.bam	/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/2_alignedData/bam/Q1Aligned.sortedByCoord.out.bam	/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/2_alignedData/bam/Q4Aligned.sortedByCoord.out.bam	/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/2_alignedData/bam/W2Aligned.sortedByCoord.out.bam	/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/2_alignedData/bam/Q2Aligned.sortedByCoord.out.bam
+Assigned	21599530	20433943	22094303	22435289	18720043	19061305	24719071	21190892	21792320
+Unassigned_Ambiguity	76940	70522	74695	77782	72835	65929	89760	78508	82965
+Unassigned_MultiMapping	3270232	3391177	3439943	3924937	3326726	3035959	3964998	3222701	3401925
+Unassigned_NoFeatures	20259466	19535760	20523668	26489242	18965671	18101355	23182592	19368398	20771980
+Unassigned_Unmapped	0	0	0	0	0	0	0	0	0
+Unassigned_MappingQuality	0	0	0	0	0	0	0	0	0
+Unassigned_FragmentLength	0	0	0	0	0	0	0	0	0
+Unassigned_Chimera	0	0	0	0	0	0	0	0	0
+Unassigned_Secondary	0	0	0	0	0	0	0	0	0
+Unassigned_Nonjunction	0	0	0	0	0	0	0	0	0
+Unassigned_Duplicate	0	0	0	0	0	0	0	0	0
