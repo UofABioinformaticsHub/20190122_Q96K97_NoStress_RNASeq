@@ -54,7 +54,7 @@ mkdir -p ${TRIMDATA}/FastQC
 mkdir -p ${TRIMDATA}/log
 
 ## Setup for genome alignment
-ALIGNDATA=${PROJROOT}/4_filteredData
+ALIGNDATA=${PROJROOT}/2_alignedData
 mkdir -p ${ALIGNDATA}/log
 mkdir -p ${ALIGNDATA}/bam
 mkdir -p ${ALIGNDATA}/FastQC
@@ -155,6 +155,7 @@ featureCounts -Q 10 \
   -s 2 \
   -T ${CORES} \
   -p \
+  -J \
   -a ${GTF} \
   -o ${ALIGNDATA}/featureCounts/counts.out ${sampleList}
 

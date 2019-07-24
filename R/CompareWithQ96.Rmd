@@ -1,0 +1,204 @@
+---
+title: "CompareWithQ96"
+author: "L Baer"
+date: "28/05/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+## R setup
+
+```{r}
+# Load libraries
+library(limma)
+library(edgeR)
+library(AnnotationHub)
+library(tidyverse)
+library(magrittr)
+library(scales)
+library(pander)
+library(ggrepel)
+library(here)
+```
+
+## Load my data
+
+```{r}
+# Load counts
+countsLB <- read_tsv(here("2_alignedData/featureCounts/genes.out")) %>%
+  set_colnames(basename(colnames(.))) %>%
+  set_colnames(str_remove(colnames(.), "Aligned.sortedByCoord.out.bam"))  %>%
+  dplyr::select(Geneid, starts_with("W"), starts_with("Q"))
+```
+
+```{r}
+# Create DGEList and calculate normalisaton factors
+dgeListLB <- countsLB %>%
+  as.data.frame() %>%
+  column_to_rownames("Geneid") %>%
+  DGEList() %>%
+  calcNormFactors()
+```
+
+```{r}
+# Set group variable
+dgeListLB$samples$group <- colnames(dgeListLB) %>%
+  str_extract("(W|Q)") %>%
+  factor(levels = c("W", "Q"))
+```
+
+```{r}
+# Add AnnotationHub and subset to search for zebrafish
+ah <- AnnotationHub()
+ah %>%
+  subset(species == "Danio rerio") %>%
+  subset(dataprovider == "Ensembl") %>%
+  subset(rdataclass == "EnsDb")
+```
+
+```{r}
+# Select correct Ensembl release
+ensDb <- ah[["AH64906"]]
+```
+
+```{r}
+# Extract GenomicRanges object from ensDb
+genesGR <- genes(ensDb)
+```
+
+```{r}
+# Remove redundant columns from mcols
+mcols(genesGR) <- mcols(genesGR)[c("gene_id", "gene_name", "gene_biotype", "entrezid")]
+```
+
+```{r}
+# Add genesGR to DGEList using rownames of DGEList to reorder the genesGR
+dgeListLB$genes <- genesGR[rownames(dgeListLB),]
+```
+
+```{r}
+# Create logical vector of genes to keep that fit criteria
+keepLB <- dgeListLB %>%
+  cpm() %>%
+  is_greater_than(1) %>%
+  rowSums() %>%
+  is_weakly_greater_than(4)
+```
+
+```{r}
+# Create new DGEList of genes fitting criteria
+dgeFiltLB <- dgeListLB[keepLB,, keep.lib.sizes = FALSE] %>%
+  calcNormFactors()
+```
+
+```{r}
+# Create model matrix
+designLB <- model.matrix(~group, data = dgeListLB$samples)
+```
+
+```{r}
+# Perform exact test on DGEList
+topTableLB <- dgeFiltLB %>%
+  estimateDisp(design = designLB) %>%
+  exactTest() %>%
+  topTags(n = Inf) %>%
+  .$table %>%
+  as_tibble() %>%
+  dplyr::select(Geneid = ID.gene_id, 
+                 logFC_lb = logFC)
+```
+
+## Load Nhi's data
+
+```{r}
+# Load Nhi's DGEList
+dgeListNH <- read_rds("nhiData/dge_g.rds") %>%
+  .[,rownames(subset(.$samples, Age == 6 & Hypoxia == 0))]
+```
+
+```{r}
+# Set group variable
+dgeListNH$samples$group <- colnames(dgeListNH) %>%
+  str_extract("(w|q)") %>%
+  factor(levels = c("w", "q"))
+```
+
+```{r}
+# Create logical vector of genes to keep that fit criteria
+keepNH <- dgeListNH %>%
+  cpm() %>%
+  is_greater_than(1) %>%
+  rowSums() %>%
+  is_weakly_greater_than(4)
+```
+
+```{r}
+# Create new DGEList of genes fitting criteria
+dgeFiltNH <- dgeListNH[keepNH,, keep.lib.sizes = FALSE] %>%
+  calcNormFactors()
+```
+
+```{r}
+#Create model matrix
+designNH <- model.matrix(~group, data = dgeListNH$samples)
+```
+
+```{r}
+# Perform exact test on DGEList
+topTableNH <- dgeListNH %>%
+  estimateDisp(design = designNH) %>%
+  exactTest() %>%
+  topTags(n = Inf) %>%
+  .$table %>%
+  as_tibble() %>%
+  dplyr::select(Geneid = ensembl_gene_id, 
+                 logFC_nh = logFC)
+```
+
+## LogFC Comparison
+
+```{r}
+# Join tables
+logFC <- left_join(topTableLB, topTableNH, by = "Geneid") %>%
+  na.omit()
+```
+
+```{r}
+logFC %>%
+  cbind(gene_name = mcols(genesGR[.$Geneid])$gene_name) %>%
+  ggplot(aes(logFC_lb,logFC_nh)) +
+  geom_point() +
+  geom_text_repel(
+    aes(label = gene_name),
+    data = .%>% 
+      dplyr::filter(abs(logFC_lb) > 2 | abs(logFC_nh) > 2) 
+    ) +
+  geom_abline(slope = 1, intercept = 0, col = "blue") +
+  geom_vline(xintercept = c(-1, 1), linetype = 2, colour = "grey50") +
+  geom_hline(yintercept = c(-1, 1), linetype = 2, colour = "grey50") +
+  scale_y_continuous(breaks = seq(-4, 4, by = 2)) +
+  labs(title = "LogFC comparison of q96k97del between Nhi and Lachlan's datasets") +
+  xlab("Lachlan") + ylab("Nhi") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+x Repeat analysis using `dgeFilt %>% estimateDisp(design = design) %>% exactTest() %>% topTags(n = 20)` & try excluding the low quality sample (Q2)
+x Run `picard MarkDuplicates` and show me the log files
+x Try using alternative p-value adjustment methods (adapt-glm, ihw, bl)
+x plot foldchange mydata vs nhisdata
+    - Also compare enriched pathways
+- blalock concordance analysis on both datasets
+- perform a meta analysis. Fisher's method.
+- Remove sample Q2? (Maybe...?)
+- Use RUV-Seq to remove 'unwanted variation'. Is PC1 some unwanted soure of variation that we can't identify?
+- Using the psen2 mutant, sorl1 mutant & only this dataset, run WGCNA & perform a meta analysis (Fisher's method?)
+- Check Mouse microarray dataset (optional aim)
+- Look into iron stuff
+
+- FDR paper: https://genomebiology.biomedcentral.com/articles/10.1186/s13059-019-1716-1

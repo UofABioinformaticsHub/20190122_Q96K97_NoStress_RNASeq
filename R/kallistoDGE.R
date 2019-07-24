@@ -1,4 +1,3 @@
-# Reading in data and making the counts matrix ----------------------------
 library(rtracklayer)
 library(limma)
 library(edgeR)
@@ -34,21 +33,39 @@ tr2gn <- gr %>%
   as_tibble()
 
 #Create DGE list
-geneDGE <- counts$counts %>%
+#geneDGE <- 
+
+counts$counts %>%
   as.data.frame() %>%
   rownames_to_column("transcript_id") %>%
-  dplyr::filter(!grepl("unspliced", transcript_id)) %>%
   as_tibble() %>%
   mutate(transcript_id = str_remove_all(transcript_id, "\\.[0-9]+")) %>%
+  mutate(transcript_id = str_remove_all(transcript_id, "_unspliced")) #%>%
   gather(key = "Sample", value = "Counts", ends_with("test")) %>%
   left_join(tr2gn) %>%
   group_by(Sample, gene_id) %>%
   summarise(Counts = sum(Counts)) %>%
   spread(key = "Sample", value = "Counts") %>%
+  dplyr::filter(!is.na(gene_id)) %>%
   column_to_rownames("gene_id") %>%
   DGEList() %>%
   calcNormFactors()
 
+#geneDGE <- counts$counts %>%
+#  as.data.frame() %>%
+#  rownames_to_column("transcript_id") %>%
+#  dplyr::filter(!grepl("unspliced", transcript_id)) %>%
+# as_tibble() %>%
+#  mutate(transcript_id = str_remove_all(transcript_id, "\\.[0-9]+")) %>%
+#  gather(key = "Sample", value = "Counts", ends_with("_test")) %>%
+#  left_join(tr2gn) %>%
+#  group_by(Sample, gene_id) %>%
+#  summarise(Counts = sum(Counts)) %>%
+#  spread(key = "Sample", value = "Counts") %>%
+#  column_to_rownames("gene_id") #%>%
+#  DGEList() %>%
+#  calcNormFactors()
+  
 #Rename columns and rows
 colnames(geneDGE$counts) <- str_remove(colnames(geneDGE$counts), "_test")
 rownames(geneDGE$samples) <- str_remove(rownames(geneDGE$samples), "_test")

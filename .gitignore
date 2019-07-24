@@ -19,3 +19,7 @@ slurm/
 *cache*
 *files*
 *DS_Store*
+._.gitignore
+.RData
+R/\.*
+bash/\.*

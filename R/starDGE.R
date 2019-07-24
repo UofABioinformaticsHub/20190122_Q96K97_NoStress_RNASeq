@@ -10,7 +10,7 @@ library(ggrepel)
 library(here)
 
 #Load counts
-counts <- read_tsv(here("../2_alignedData/featureCounts/genes.out")) %>%
+counts <- read_tsv(here("4_filteredData/featureCounts/genes.out")) %>%
   set_colnames(basename(colnames(.))) %>%
   set_colnames(str_remove(colnames(.), "Aligned.sortedByCoord.out.bam"))  %>%
   dplyr::select(Geneid, starts_with("W"), starts_with("Q"))
@@ -23,7 +23,6 @@ dgeList <- counts %>%
   calcNormFactors()
 
 #Set group variable
-#Why do we need to do this?
 dgeList$samples$group <- colnames(dgeList) %>%
   str_extract("(W|Q)") %>%
   factor(levels = c("W", "Q"))
@@ -38,7 +37,6 @@ ah %>%
   subset(rdataclass == "EnsDb")
 
 #Select correct Ensembl release
-#How do we know which release matches the the data we have generated?
 ensDb <- ah[["AH64906"]]
 
 #Extract GenomicRanges object from ensDb
