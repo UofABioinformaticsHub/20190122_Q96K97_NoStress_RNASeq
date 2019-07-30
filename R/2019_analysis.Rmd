@@ -13,10 +13,12 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 ```
 
-## R setup
+# R setup
 
 ```{r}
 # Load libraries
+library(plyr)
+library(tidyverse)
 library(edgeR)
 library(AnnotationHub)
 library(magrittr)
@@ -28,11 +30,16 @@ library(pheatmap)
 library(igraph)
 library(tidygraph)
 library(ggraph)
-library(tidyverse)
-library(plyr)
+library(grid)
+library(RUVSeq)
 ```
 
-# 2019 data
+```{r}
+# Set working directory
+setwd("/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/R")
+```
+
+# 2019 data analysis
 
 ## Differential Expression Analysis
 
@@ -90,6 +97,17 @@ genesGR <- genes(ensDb)
 mcols(genesGR) <- mcols(genesGR)[c("gene_id", "gene_name", 
                                    "gene_biotype", "entrezid")]
 ```
+
+```{r}
+transGR <- transcripts(ensDb)
+mcols(transGR) <- mcols(transGR)[c("tx_id", "gene_id")]
+trans2Gene <- tibble(
+  tx_id = transGR$tx_id,
+  gene_id = transGR$gene_id
+)
+```
+
+
 
 ```{r}
 # Add genesGR to DGEList using rownames of DGEList to reorder the genesGR
@@ -275,7 +293,7 @@ topTable %>%
 ```{r fig.align = "center"}
 # MD Plot showing DE genes
 topTable %>%
-  arrange(desc(P.Value)) %>%
+  dplyr::arrange(desc(P.Value)) %>%
   ggplot(aes(AveExpr, logFC, colour = DE)) +
   geom_point(alpha = 0.5) +
   geom_text_repel(
@@ -333,7 +351,7 @@ goResults %>%
   rownames_to_column("GO ID") %>%
   as_tibble() %>%
   dplyr::filter(DE > 1) %>%
-  arrange(P.DE) %>%
+  dplyr::arrange(P.DE) %>%
   mutate(FDR = p.adjust(P.DE, "fdr")) %>%
   dplyr::filter(FDR < 0.05) %>%
   mutate(`GO ID` = str_replace(`GO ID`, ":", "\\\\:")) %>%
@@ -364,7 +382,7 @@ idConvertSymbol <- read_csv2("../files/zf2human_withEntrezIDs.csv") %>%
 # Create named vector of gene level statistics 
 ranks <- topTable %>%
   mutate(stat = -sign(logFC) * log10(P.Value)) %>%
-  arrange(desc(stat)) %>%
+  dplyr::arrange(desc(stat)) %>%
   with(structure(stat, names = Geneid))
 ```
 
@@ -394,7 +412,7 @@ fgseaHallmark <- fgsea(hallmark, ranks, nperm=1e5) %>%
   as_tibble() %>%
   dplyr::rename(FDR = padj) %>%
   mutate(padj = p.adjust(pval, "bonferroni")) %>%
-  arrange(pval)
+  dplyr::arrange(pval)
 # Create an object of pathways with adjusted p-value < 0.05 for construction of network diagrams. This should be done differently next time, but too much work has been done to change it now.
 fgseaHallmarkTop <- fgseaHallmark %>%
   dplyr::filter(padj < 0.05)
@@ -451,7 +469,7 @@ fgseaKEGG <- fgsea(kegg, ranks, nperm=1e5) %>%
   as_tibble() %>%
   dplyr::rename(FDR = padj) %>%
   mutate(padj = p.adjust(pval, "bonferroni")) %>%
-  arrange(pval)
+  dplyr::arrange(pval)
 # Create an object of pathways with adjusted p-value < 0.05 for construction of network diagrams. This should be done differently next time, but too much work has been done to change it now.
 fgseaKEGGTop <- fgseaKEGG %>%
   dplyr::filter(padj < 0.05)
@@ -508,7 +526,7 @@ fgseaWiki <- fgsea(wiki, ranks, nperm=1e5) %>%
   as_tibble() %>%
   dplyr::rename(FDR = padj) %>%
   mutate(padj = p.adjust(pval, "bonferroni")) %>%
-  arrange(pval)
+  dplyr::arrange(pval)
 # Create an object of pathways with adjusted p-value < 0.05 for construction of network diagrams. This should be done differently next time, but too much work has been done to change it now.
 fgseaWikiTop <- fgseaWiki %>%
   dplyr::filter(padj < 0.05)
@@ -876,31 +894,135 @@ ggraph(tidyWiki, layout = "fr") +
   theme(legend.position = "none")
 ```
 
-# 2017 data
+## RUVSeq
+
+### k = 1
+
+```{r}
+# Extract subset of low expressed genes from DE analysis to act as negative controls for RUVg procedure
+negControl <- topTable %>% 
+  dplyr::arrange(desc(P.Value)) %>%
+  .[1:10000,] %>%
+  .$Geneid
+```
+
+```{r}
+# Run RUVSeq
+RUVk1 <- RUVg(dgeFilt$counts, negControl, 1)
+```
+
+```{r}
+# Create copy of dgeFilt as framework to replace RUVSeq results into
+dgeRUVk1 <- dgeFilt
+# Replace with results
+dgeRUVk1$counts <- RUVk1$normalizedCounts
+```
+
+```{r}
+# Run PCA function
+pcaRUVk1 <- dgeRUVk1 %>%
+  cpm(log = TRUE) %>%
+  t() %>%
+  prcomp()
+# Quick inspection to check whether first two PCA components capture most of the variability
+summary(pcaRUVk1)$importance %>% pander(split.tables = Inf)
+# Plot PCA
+pcak1 <- pcaRUVk1$x %>%
+  as.data.frame() %>%
+  rownames_to_column("sample") %>%
+  as_tibble() %>%
+  dplyr::select(sample, PC1, PC2) %>%
+  left_join(rownames_to_column(dgeRUVk1$samples, "sample")) %>%
+  ggplot(aes(PC1, PC2, colour = group, label = sample)) +
+  geom_point() +
+  geom_text_repel(show.legend = FALSE) +
+  theme_bw()
+```
+
+### k = 2
+
+```{r}
+# Run RUVSeq
+RUVk2 <- RUVg(dgeFilt$counts, negControl, 2)
+```
+
+```{r}
+# Create copy of dgeFilt as framework to replace RUVSeq results into
+dgeRUVk2 <- dgeFilt
+# Replace with results
+dgeRUVk2$counts <- RUVk2$normalizedCounts
+```
+
+```{r}
+# Run PCA function
+pcaRUVk2 <- dgeRUVk2 %>%
+  cpm(log = TRUE) %>%
+  t() %>%
+  prcomp()
+# Quick inspection to check whether first two PCA components capture most of the variability
+summary(pcaRUVk2)$importance %>% pander(split.tables = Inf)
+# Plot PCA
+pcak2 <- pcaRUVk2$x %>%
+  as.data.frame() %>%
+  rownames_to_column("sample") %>%
+  as_tibble() %>%
+  dplyr::select(sample, PC1, PC2) %>%
+  left_join(rownames_to_column(dgeRUVk2$samples, "sample")) %>%
+  ggplot(aes(PC1, PC2, colour = group, label = sample)) +
+  geom_point() +
+  geom_text_repel(show.legend = FALSE) +
+  theme_bw()
+```
+
+### Results
+
+```{r}
+# Set up grid for visualisation of 2 PCA's at once.
+vp1 <- viewport(x = 0.25, y = 0.5, width = 0.5, height = 1)
+vp2 <- viewport(x = 0.75, y = 0.5, width = 0.5, height = 1)
+# Plot PCA plots in grid
+if (interactive()) grid::grid.newpage()
+print(pcak1, vp = vp1)
+print(pcak2, vp = vp2)
+```
+
+# 2017 data analysis
 
 ## Differential Expression Analysis
 
 ### Load data
 
 ```{r}
-# Load Nhi's DGEList
-dgeListNhi <- read_rds("nhiData/dge_g.rds") %>%
-  .[,rownames(subset(.$samples, Age == 6 & Hypoxia == 0))]
+kalCounts <- read_rds("nhiData/6month_Normoxia.rds")
+dgeListNhi <- kalCounts$counts %>%
+  as.data.frame() %>%
+  rownames_to_column("tx_id") %>%
+  as_tibble() %>%
+  set_colnames(basename(colnames(.))) %>%
+  mutate(tx_id = str_remove_all(tx_id, "\\.[0-9]*$")) %>%
+  left_join(trans2Gene) %>%
+  group_by(gene_id) %>%
+  summarise_if(
+    .predicate = is.numeric,
+    .funs = sum
+    ) %>%
+  as.data.frame() %>%
+  column_to_rownames("gene_id") %>%
+  DGEList(
+    samples = data.frame(
+      sample = colnames(.)
+    ) %>%
+      mutate(Mutant = grepl("6Q", sample)),
+    group = colnames(.) %>%
+      str_replace_all("(.+_6)([PQ])(.+)", "\\2") %>%
+      str_replace_all("P", "WT") %>%
+      str_replace_all("Q", "Mut") %>%
+      factor(levels = c("WT", "Mut")),
+    genes = genesGR[rownames(.)]
+  ) %>%
+  calcNormFactors() 
 ```
 
-```{r}
-# Set group variable
-dgeListNhi$samples$group <- colnames(dgeListNhi) %>%
-  str_extract("(w|q)") %>%
-  factor(levels = c("w", "q"))
-```
-
-### Add gene information
-
-```{r}
-# Add genesGR to DGEList using rownames of DGEList to reorder the genesGR
-dgeListNhi$genes <- genesGR[rownames(dgeListNhi),]
-```
 
 ### Data QC
 
@@ -935,9 +1057,6 @@ genes2keepNhi <- dgeListNhi %>%
 # Create new DGEList of genes fitting criteria
 dgeFiltNhi <- dgeListNhi[genes2keepNhi,, keep.lib.sizes = FALSE] %>%
   calcNormFactors()
-# Remove unneeded columns from samples element
-dgeFiltNhi$samples <- dgeFiltNhi$samples %>%
-  dplyr::select(group, lib.size, norm.factors)
 ```
 
 ```{r fig.align = "center"}
@@ -991,10 +1110,10 @@ pcaNhi$x %>%
   rownames_to_column("sample") %>%
   as_tibble() %>%
   dplyr::select(sample, PC1, PC2) %>%
-  left_join(rownames_to_column(dgeFiltNhi$samples, "sample")) %>%
+  left_join(dgeFiltNhi$samples) %>%
   ggplot(aes(PC1, PC2, colour = group, label = sample)) +
   geom_point() +
-  geom_text_repel() +
+  geom_text_repel(show.legend = FALSE) +
   theme_bw()
 ```
 
@@ -1040,7 +1159,7 @@ topTableNhi %>%
 ```{r fig.align = "center"}
 # MD Plot showing DE genes
 topTableNhi %>%
-  arrange(desc(P.Value)) %>%
+  dplyr::arrange(desc(P.Value)) %>%
   ggplot(aes(AveExpr, logFC, colour = DE)) +
   geom_point(alpha = 0.5) +
   geom_text_repel(data = . %>% 
@@ -1068,7 +1187,7 @@ topTableDENhi %>% pander(style = "rmarkdown", split.tables = Inf)
 # Create named vector of gene level statistics 
 ranksNhi <- topTableNhi %>%
   mutate(stat = -sign(logFC) * log10(P.Value)) %>%
-  arrange(desc(stat)) %>%
+  dplyr::arrange(desc(stat)) %>%
   with(structure(stat, names = Geneid))
 ```
 
@@ -1082,7 +1201,7 @@ fgseaHallmarkNhi <- fgsea(hallmark, ranksNhi, nperm=1e5) %>%
   as_tibble() %>%
   dplyr::rename(FDR = padj) %>%
   mutate(padj = p.adjust(pval, "bonferroni")) %>%
-  arrange(pval)
+  dplyr::arrange(pval)
 # Create an object of pathways with adjusted p-value < 0.05 for construction of network diagrams. This should be done differently next time, but too much work has been done to change it now.
 fgseaHallmarkNhiTop <- fgseaHallmarkNhi %>%
   dplyr::filter(padj < 0.05)
@@ -1115,7 +1234,7 @@ fgseaKEGGNhi <- fgsea(kegg, ranksNhi, nperm=1e5) %>%
   as_tibble() %>%
   dplyr::rename(FDR = padj) %>%
   mutate(padj = p.adjust(pval, "bonferroni")) %>%
-  arrange(pval)
+  dplyr::arrange(pval)
 # Create an object of pathways with adjusted p-value < 0.05 for construction of network diagrams. This should be done differently next time, but too much work has been done to change it now.
 fgseaKEGGNhiTop <- fgseaKEGGNhi %>%
   dplyr::filter(padj < 0.05)
@@ -1148,7 +1267,7 @@ fgseaWikiNhi <- fgsea(wiki, ranksNhi, nperm=1e5) %>%
   as_tibble() %>%
   dplyr::rename(FDR = padj) %>%
   mutate(padj = p.adjust(pval, "bonferroni")) %>%
-  arrange(pval)
+  dplyr::arrange(pval)
 # Create an object of pathways with adjusted p-value < 0.05 for construction of network diagrams. This should be done differently next time, but too much work has been done to change it now.
 fgseaWikiNhiTop <- fgseaWikiNhi %>%
   dplyr::filter(padj < 0.05)
@@ -1476,7 +1595,99 @@ ggraph(tidyWikiNhi, layout = "fr") +
   theme(legend.position = "none")
 ```
 
-# Comparison between 2019 and 2017
+## RUVSeq
+
+### k = 1
+
+```{r}
+# Extract subset of low expressed genes from DE analysis to act as negative controls for RUVg procedure
+negControlNhi <- topTableNhi %>% 
+  dplyr::arrange(desc(P.Value)) %>%
+  .[1:10000,] %>%
+  .$Geneid
+```
+
+```{r}
+# Run RUVSeq
+RUVk1Nhi <- RUVg(dgeFiltNhi$counts, negControlNhi, 1)
+```
+
+```{r}
+# Create copy of dgeFilt as framework to replace RUVSeq results into
+dgeRUVk1Nhi <- dgeFiltNhi
+# Replace with results
+dgeRUVk1Nhi$counts <- RUVk1Nhi$normalizedCounts
+```
+
+```{r}
+# Run PCA function
+pcaRUVk1Nhi <- dgeRUVk1Nhi %>%
+  cpm(log = TRUE) %>%
+  t() %>%
+  prcomp()
+# Quick inspection to check whether first two PCA components capture most of the variability
+summary(pcaRUVk1Nhi)$importance %>% pander(split.tables = Inf)
+# Plot PCA
+pcak1Nhi <- pcaRUVk1Nhi$x %>%
+  as.data.frame() %>%
+  rownames_to_column("sample") %>%
+  as_tibble() %>%
+  dplyr::select(sample, PC1, PC2) %>%
+  left_join(rownames_to_column(dgeRUVk1Nhi$samples, "sample")) %>%
+  ggplot(aes(PC1, PC2, colour = group, label = sample)) +
+  geom_point() +
+  geom_text_repel(show.legend = FALSE) +
+  theme_bw()
+```
+
+### k = 2
+
+```{r}
+# Run RUVSeq
+RUVk2Nhi <- RUVg(dgeFiltNhi$counts, negControlNhi, 2)
+```
+
+```{r}
+# Create copy of dgeFilt as framework to replace RUVSeq results into
+dgeRUVk2Nhi <- dgeFiltNhi
+# Replace with results
+dgeRUVk2Nhi$counts <- RUVk2Nhi$normalizedCounts
+```
+
+```{r}
+# Run PCA function
+pcaRUVk2Nhi <- dgeRUVk2Nhi %>%
+  cpm(log = TRUE) %>%
+  t() %>%
+  prcomp()
+# Quick inspection to check whether first two PCA components capture most of the variability
+summary(pcaRUVk2Nhi)$importance %>% pander(split.tables = Inf)
+# Plot PCA
+pcak2Nhi <- pcaRUVk2Nhi$x %>%
+  as.data.frame() %>%
+  rownames_to_column("sample") %>%
+  as_tibble() %>%
+  dplyr::select(sample, PC1, PC2) %>%
+  left_join(rownames_to_column(dgeRUVk2Nhi$samples, "sample")) %>%
+  ggplot(aes(PC1, PC2, colour = group, label = sample)) +
+  geom_point() +
+  geom_text_repel(show.legend = FALSE) +
+  theme_bw()
+```
+
+### Results
+
+```{r}
+# Set up grid for visualisation of 2 PCA's at once.
+vp1 <- viewport(x = 0.25, y = 0.5, width = 0.5, height = 1)
+vp2 <- viewport(x = 0.75, y = 0.5, width = 0.5, height = 1)
+# Plot PCA plots in grid
+if (interactive()) grid::grid.newpage()
+print(pcak1Nhi, vp = vp1)
+print(pcak2Nhi, vp = vp2)
+```
+
+# Integration of 2019 data with 2017 data
 
 ## Meta Analysis
 
@@ -1551,21 +1762,147 @@ fgseaKEGGMeta %>%
   )
 ```
 
-## Integration of counts
+## PCA
+
+### Set up DGE List and QC data
 
 ```{r}
 # Combine counts into the same DGE List
-countsCombined <- cbind.DGEList(dgeList, dgeListNhi)
 # First extract counts from 2017 DGE List
 countsNhi <- dgeListNhi$counts %>%
-  as_tibble() %>%
-  rownames_to_column("Geneid")
+  as.data.frame() %>%
+  rownames_to_column("Geneid") %>%
+  set_colnames(str_remove(colnames(.), "_6_0")) %>%
+  set_colnames(str_replace(colnames(.), "q96", "Q")) %>%
+  set_colnames(str_replace(colnames(.), "wt", "W")) %>%
+  as_tibble()
 # Then join with 2019 counts
-countsCombined <- full_join(counts, countsNhi)
+dgeListComb <- full_join(counts, countsNhi) %>%
+  replace(is.na(.), 0) %>%
+  as.data.frame() %>%
+  column_to_rownames("Geneid") %>%
+  DGEList() %>%
+  calcNormFactors()
+# Set group variable
+dgeListComb$samples$group <- colnames(dgeListComb) %>%
+  str_extract("(W|Q)") %>%
+  factor(levels = c("W", "Q"))
 ```
-
-### PCA
 
 ```{r}
-
+# Create logical vector of genes to keep that fit criteria
+genes2keepComb <- dgeListComb %>%
+  cpm() %>%
+  is_greater_than(1) %>%
+  rowSums() %>%
+  is_weakly_greater_than(8)
 ```
+
+```{r}
+# Create new DGEList of genes fitting criteria
+dgeFiltComb <- dgeListComb[genes2keepComb,, 
+                                   keep.lib.sizes = FALSE] %>%
+  calcNormFactors()
+```
+
+```{r fig.align = "center"}
+# Compare distributions of the DGELists before and after filtering
+par(mfrow = c(1,2))
+dgeListComb %>%
+  cpm(log = TRUE) %>%
+  plotDensities(legend = FALSE, main = "Before Filtering")
+dgeFiltComb %>%
+  cpm(log = TRUE) %>%
+  plotDensities(legend = FALSE, main = "After Filtering")
+par(mfrow = c(1,1))
+```
+
+### Plot PCA graphs
+
+```{r}
+# Assess cpm values to make sure PCA results are not heavily skewed by highly expressed genes
+pcaComb <- dgeFiltComb %>%
+  cpm(log = TRUE) %>%
+  t() %>%
+  prcomp()
+```
+
+```{r}
+# Quick inspection to check whether first two PCA components capture most of the variability
+summary(pca)$importance %>% pander(split.tables = Inf)
+```
+
+```{r fig.align = "center"}
+# Create PCA plots
+pca12 <- pcaComb$x %>%
+  as.data.frame() %>%
+  rownames_to_column("sample") %>%
+  as_tibble() %>%
+  dplyr::select(sample, PC1, PC2) %>%
+  left_join(rownames_to_column(dgeFiltComb$samples, "sample")) %>%
+  mutate(
+    data = case_when(
+      str_detect(.$sample, "_") == TRUE ~ "2017",
+      str_detect(.$sample, "_") == FALSE ~ "2019"
+    )
+  ) %>%
+  ggplot(aes(PC1, PC2, colour = data, label = sample, shape = group)) +
+  geom_point() +
+  geom_text_repel(show.legend = FALSE) +
+  theme_bw() +
+  theme(legend.position = c(1.2, 0.5))
+pca13 <- pcaComb$x %>%
+  as.data.frame() %>%
+  rownames_to_column("sample") %>%
+  as_tibble() %>%
+  dplyr::select(sample, PC1, PC3) %>%
+  left_join(rownames_to_column(dgeFiltComb$samples, "sample")) %>%
+  mutate(
+    data = case_when(
+      str_detect(.$sample, "_") == TRUE ~ "2017",
+      str_detect(.$sample, "_") == FALSE ~ "2019"
+    )
+  ) %>%
+  ggplot(aes(PC1, PC3, colour = data, label = sample, shape = group)) +
+  geom_point() +
+  geom_text_repel(show.legend = FALSE) +
+  theme_bw() +
+  theme(legend.position = "none")
+pca23 <- pcaComb$x %>%
+  as.data.frame() %>%
+  rownames_to_column("sample") %>%
+  as_tibble() %>%
+  dplyr::select(sample, PC2, PC3) %>%
+  left_join(rownames_to_column(dgeFiltComb$samples, "sample")) %>%
+  mutate(
+    data = case_when(
+      str_detect(.$sample, "_") == TRUE ~ "2017",
+      str_detect(.$sample, "_") == FALSE ~ "2019"
+    )
+  ) %>%
+  ggplot(aes(PC2, PC3, colour = data, label = sample, shape = group)) +
+  geom_point() +
+  geom_text_repel(show.legend = FALSE) +
+  theme_bw() +
+  theme(legend.position = "none")
+``` 
+
+```{r}
+# Set up grid for visualisation of 3 PCA's at once.
+vp1 <- viewport(x = 0.25, y = 0.25, width = 0.5, height = 0.5)
+vp2 <- viewport(x = 0.25, y = 0.75, width = 0.5, height = 0.5)
+vp3 <- viewport(x = 0.75, y = 0.75, width = 0.5, height = 0.5)
+# Plot PCA plots in grid
+if (interactive()) grid::grid.newpage()
+print(pca12, vp = vp1)
+print(pca13, vp = vp2)
+print(pca23, vp = vp3)
+```
+
+## RUVSeq
+
+```{r}
+# Find common genes whch a least differentially expressed in both datasets
+Replace(intersect, list(negControl, negControlNhi))
+```
+

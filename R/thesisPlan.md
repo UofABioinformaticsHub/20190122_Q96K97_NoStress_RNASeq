@@ -13,21 +13,22 @@
     x Find common genes between pathways that cluster together
 
 2. [] Integration with 2017
-  - Summary of 2017
+   Summary of 2017
     - [x] DGE Analysis
     - [x] GSEA Analysis
   - [x] Meta analysis of GSEA/fry results
     - Use -log10(p) & Fisher's Method
     - No easy visualisation...
   - [] Integration of counts
-    1. [] Put counts in same dge list
-    2. [] MDS/PCA
-    3. [] Dream
+    1. [x] Put counts in same dge list
+    2. [x] MDS/PCA
+    3. [] RUVSeq
+      - [] Compare with Dream results (logFC vs logFC; -log10(p) vs -log10(p))
+      - [] GSEA (or fry)    
+    4. [] Dream
       - [] DGE
       - [] GSEA/fry on Dream Results
-    4. [] RUVSeq
-      - [] Compare with Dream results (logFC vs logFC; -log10(p) vs -log10(p))
-      - [] GSEA (or fry)
+
 
   
 3. [] Integration using alternative approaches
