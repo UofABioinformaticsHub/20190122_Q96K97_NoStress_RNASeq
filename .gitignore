@@ -17,7 +17,7 @@ slurm/
 *kallisto_index*
 *abundance.tsv
 *cache*
-*files*
+*_files*
 *DS_Store*
 ._.gitignore
 .RData
