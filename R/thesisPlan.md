@@ -1,4 +1,4 @@
-1. 2019
+1. 2019 Analysis
   - [x] DE analysis
   - [x] GSEA
     - [x] Wiki pathways
@@ -14,28 +14,28 @@
       - Find common genes between pathways that cluster together
 
 2. Integration with 2017
-  1. [x] Summary of 2017
-    1. [x] DGE Analysis
-    2. [x] GSEA Analysis
-  2. [x] Meta analysis of GSEA/fry results
+  - [x] Summary of 2017
+    - [x] DGE Analysis
+    - [x] GSEA Analysis
+  - [x] Meta analysis of GSEA/fry results
     - Use -log10(p) & Fisher's Method
     - No easy visualisation...
-  3. Integration of counts
-    1. [x] LogFC comparison
-    2. [x] Put counts in same dge list
-    3. [x] MDS/PCA
-    4. RUVSeq
-      1. Compare with Dream results (logFC vs logFC; -log10(p) vs -log10(p))
-      2. GSEA (or fry)    
-    5. Dream
-      1. DGE
-      2. GSEA/fry on Dream Results
+  - [ ] Integration of counts
+    - [x] LogFC comparison
+    - [x] Put counts in same dge list
+    - [x] MDS/PCA
+    - [ ] RUVSeq
+      - [ ] Compare with Dream results (logFC vs logFC; -log10(p) vs -log10(p))
+      - [ ] GSEA (or fry)    
+    - [ ] Dream
+      - [ ] DGE
+      - [ ] GSEA/fry on Dream Results
 
 3. Integration using alternative approaches
-  1. Singscore
-  2. Concordance (Blalock)
+  - [ ] Singscore
+  - [ ] Concordance (Blalock)
   
 4. Analysis using other mutants (Psen2, Sorl1, Q96K97)
     - Do we include non-EOfAD's? (K97fs, Psen null)
     - Meta-analysis using Fisher's method & Stouffer's method (use all genesets)
-  1. WGCNA or Singscore
+  - [ ] WGCNA or Singscore
