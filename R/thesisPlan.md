@@ -1,12 +1,12 @@
 1. 2019
-  1. [x] DE analysis
-  2. [x] GSEA
-    1. [x] Wiki pathways
-    2. [x] 50 Hallmark
-    3. [x] KEGG
-  3. IRE
-  4. Compare p-values from GSEA and fry (using -log10) just for fun
-  5. Select best visualisation and zoom in on OXPHOS (`clusterProfiler::cnetplot()`)
+  * [x] DE analysis
+  * [x] GSEA
+    - [x] Wiki pathways
+    - [x] 50 Hallmark
+    - [x] KEGG
+  - IRE
+  - Compare p-values from GSEA and fry (using -log10) just for fun
+  - Select best visualisation and zoom in on OXPHOS (`clusterProfiler::cnetplot()`)
   - Put aside for now:
     - Community detection using Ville's turnip & burdock
       - Only use significant pathways
