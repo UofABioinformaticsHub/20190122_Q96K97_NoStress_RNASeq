@@ -1014,10 +1014,6 @@ dgeListNhi <- kalCounts$counts %>%
   set_colnames(str_remove(colnames(.), "_[RS].+")) %>%
   set_colnames(str_replace(colnames(.), "6P", "6W")) %>%
   DGEList(
-    samples = data.frame(
-      sample = colnames(.)
-    ) %>%
-      mutate(Mutant = grepl("6Q", sample)),
     group = colnames(.) %>%
       str_replace_all("(6)([WQ])(.+)", "\\2") %>%
       str_replace_all("W", "WT") %>%
@@ -1115,7 +1111,7 @@ pcaNhi$x %>%
   rownames_to_column("sample") %>%
   as_tibble() %>%
   dplyr::select(sample, PC1, PC2) %>%
-  left_join(dgeFiltNhi$samples) %>%
+  left_join(rownames_to_column(dgeFiltNhi$samples, "sample")) %>%
   ggplot(aes(PC1, PC2, colour = group, label = sample)) +
   geom_point() +
   geom_text_repel(show.legend = FALSE) +
@@ -1693,6 +1689,10 @@ print(pcak2Nhi, vp = vp2)
 ```
 
 # Integration of 2019 data with 2017 data
+
+## LogFC Comparison
+
+
 
 ## Meta Analysis
 
