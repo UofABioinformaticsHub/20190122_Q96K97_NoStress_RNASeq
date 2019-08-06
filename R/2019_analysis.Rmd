@@ -32,6 +32,7 @@ library(tidygraph)
 library(ggraph)
 library(grid)
 library(RUVSeq)
+library(limma)
 ```
 
 ```{r}
@@ -571,6 +572,31 @@ dgeFilt %>%
            main = "Expression levels of genes in WikiPathways oxidative phosphorylation pathway")
 ```
 
+## Fry
+
+### Hallmark
+
+```{r}
+# Create design matrix
+design <- model.matrix(~group, data = dgeFilt$samples)
+# Create voom object
+voom <- voom(dgeFilt, design)
+```
+
+```{r}
+# Create index for fry
+fryIndex <- ids2indices(hallmark, rownames(dgeFilt$counts))
+```
+
+```{r}
+# Run fry
+fry(voom, index = fryIndex, design = design) %>%
+  rownames_to_column("pathway") %>%
+  dplyr::arrange(PValue.Mixed) %>%
+  as.data.frame() %>%
+  column_to_rownames("pathway") 
+```
+
 ## Network Analysis
 
 ### Hallmark
@@ -932,7 +958,7 @@ pcaRUVg$x %>%
   rownames_to_column("sample") %>%
   as_tibble() %>%
   dplyr::select(sample, PC1, PC2) %>%
-  left_join(rownames_to_column(dgeRUVk1$samples, "sample")) %>%
+  left_join(rownames_to_column(dgeFalse$samples, "sample")) %>%
   ggplot(aes(PC1, PC2, colour = group, label = sample)) +
   geom_point() +
   geom_text_repel(show.legend = FALSE) +
@@ -1627,7 +1653,7 @@ pcaRUVgNhi$x %>%
   rownames_to_column("sample") %>%
   as_tibble() %>%
   dplyr::select(sample, PC1, PC2) %>%
-  left_join(rownames_to_column(dgeRUVk1Nhi$samples, "sample")) %>%
+  left_join(rownames_to_column(dgeFalseNhi$samples, "sample")) %>%
   ggplot(aes(PC1, PC2, colour = group, label = sample)) +
   geom_point() +
   geom_text_repel(show.legend = FALSE) +
