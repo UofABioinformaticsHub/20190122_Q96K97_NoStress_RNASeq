@@ -24,3 +24,4 @@ slurm/
 R/\.*
 bash/\.*
 *jcounts
+R/meetings.md
