@@ -1,0 +1,12 @@
+Status	/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/2_alignedData/bam/Q4_ss.fq.gz_ssAligned.sortedByCoord.out.bam	/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/2_alignedData/bam/W3_ss.fq.gz_ssAligned.sortedByCoord.out.bam	/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/2_alignedData/bam/Q1_ss.fq.gz_ssAligned.sortedByCoord.out.bam	/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/2_alignedData/bam/W2_ss.fq.gz_ssAligned.sortedByCoord.out.bam	/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/2_alignedData/bam/W1_ss.fq.gz_ssAligned.sortedByCoord.out.bam	/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/2_alignedData/bam/Q2_ss.fq.gz_ssAligned.sortedByCoord.out.bam	/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/2_alignedData/bam/W5_ss.fq.gz_ssAligned.sortedByCoord.out.bam	/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/2_alignedData/bam/Q5_ss.fq.gz_ssAligned.sortedByCoord.out.bam	/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/2_alignedData/bam/W4_ss.fq.gz_ssAligned.sortedByCoord.out.bam
+Assigned	30487547	26428989	23369112	25609685	26871919	26964467	23363752	25300435	31014085
+Unassigned_Ambiguity	323610	268820	235641	260085	270173	293286	240851	252150	304607
+Unassigned_MultiMapping	0	0	0	0	0	0	0	0	0
+Unassigned_NoFeatures	18046726	15877734	14283316	15386043	16237628	16193275	14848390	15215563	19036323
+Unassigned_Unmapped	0	0	0	0	0	0	0	0	0
+Unassigned_MappingQuality	3801225	3072741	2912640	3037652	3247460	3208364	3098740	3253804	3783048
+Unassigned_FragmentLength	0	0	0	0	0	0	0	0	0
+Unassigned_Chimera	0	0	0	0	0	0	0	0	0
+Unassigned_Secondary	0	0	0	0	0	0	0	0	0
+Unassigned_Nonjunction	0	0	0	0	0	0	0	0	0
+Unassigned_Duplicate	0	0	0	0	0	0	0	0	0
