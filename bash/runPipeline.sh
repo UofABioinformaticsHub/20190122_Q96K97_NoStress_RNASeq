@@ -155,7 +155,6 @@ featureCounts -Q 10 \
   -s 2 \
   -T ${CORES} \
   -p \
-  -J \
   -a ${GTF} \
   -o ${ALIGNDATA}/featureCounts/counts.out ${sampleList}
 
