@@ -2,7 +2,7 @@
 #SBATCH -p batch
 #SBATCH -N 1
 #SBATCH -n 16
-#SBATCH --time=1:00:00
+#SBATCH --time=24:00:00
 #SBATCH --mem=32GB
 #SBATCH -o /fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/slurm/%x_%j.out
 #SBATCH -e /fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/slurm/%x_%j.err
@@ -50,67 +50,67 @@ mkdir -p ${ALIGNDATA}/featureCounts
 ## FastQC on the raw data
 ##--------------------------------------------------------------------------------------------##
 
-# fastqc -t ${CORES} -o ${RAWDATA}/FastQC --noextract ${RAWDATA}/fastq/*1.fq.gz
+fastqc -t ${CORES} -o ${RAWDATA}/FastQC --noextract ${RAWDATA}/fastq/*1.fq.gz
 
 ##--------------------------------------------------------------------------------------------##
 ## Trimming the Merged data
 ##--------------------------------------------------------------------------------------------##
 
-# for R1 in ${RAWDATA}/fastq/*1.fq.gz
-#  do
-#
-#    echo -e "Currently working on ${R1}"
-#
-#    ## Now create the output filenames
-#    out1=${TRIMDATA}/fastq/$(basename ${R1%_1.fq.gz})_ss.fq.gz
-#    BNAME=${TRIMDATA}/fastq/$(basename ${R1%_1.fq.gz})_ss
-#    echo -e "Output file 1 will be ${out1}"
-#    echo -e "Trimming:\t${BNAME}"
-#
-#    ## Trim
-#    AdapterRemoval \
-#      --gzip \
-#      --trimns \
-#      --trimqualities \
-#      --minquality 30 \
-#      --minlength 35 \
-#      --threads ${CORES} \
-#      --basename ${BNAME} \
-#      --output1 ${out1} \
-#      --file1 ${R1}
-#
-#  done
-#
-# ## Move the log files into their own folder
-# mv ${TRIMDATA}/fastq/*settings ${TRIMDATA}/log
-#
-# ## Run FastQC
-# fastqc -t ${CORES} -o ${TRIMDATA}/FastQC --noextract ${TRIMDATA}/fastq/*_ss.fq.gz
+for R1 in ${RAWDATA}/fastq/*1.fq.gz
+ do
+
+   echo -e "Currently working on ${R1}"
+
+   ## Now create the output filenames
+   out1=${TRIMDATA}/fastq/$(basename ${R1%_1.fq.gz})_ss.fq.gz
+   BNAME=${TRIMDATA}/fastq/$(basename ${R1%_1.fq.gz})_ss
+   echo -e "Output file 1 will be ${out1}"
+   echo -e "Trimming:\t${BNAME}"
+
+   ## Trim
+   AdapterRemoval \
+     --gzip \
+     --trimns \
+     --trimqualities \
+     --minquality 30 \
+     --minlength 35 \
+     --threads ${CORES} \
+     --basename ${BNAME} \
+     --output1 ${out1} \
+     --file1 ${R1}
+
+ done
+
+## Move the log files into their own folder
+mv ${TRIMDATA}/fastq/*settings ${TRIMDATA}/log
+
+## Run FastQC
+fastqc -t ${CORES} -o ${TRIMDATA}/FastQC --noextract ${TRIMDATA}/fastq/*_ss.fq.gz
 
 ##--------------------------------------------------------------------------------------------##
 ## Aligning trimmed data to the genome
 ##--------------------------------------------------------------------------------------------##
 
-# ## Aligning, filtering and sorting
-# for R1 in ${TRIMDATA}/fastq/*_ss.fq.gz
-#   do
-#
-#   BNAME=$(basename ${R1%_1.fq.gz})_ss
-#   echo -e "STAR will align:\t${R1}"
-#
-#     STAR \
-#       --runThreadN ${CORES} \
-#       --genomeDir ${REFS}/star \
-#       --readFilesIn ${R1} \
-#       --readFilesCommand gunzip -c \
-#       --outFileNamePrefix ${ALIGNDATA}/bam/${BNAME} \
-#       --outSAMtype BAM SortedByCoordinate
-#
-#   done
-#
-# ## Move the log files into their own folder
-# mv ${ALIGNDATA}/bam/*out ${ALIGNDATA}/log
-# mv ${ALIGNDATA}/bam/*tab ${ALIGNDATA}/log
+## Aligning, filtering and sorting
+for R1 in ${TRIMDATA}/fastq/*_ss.fq.gz
+  do
+
+  BNAME=$(basename ${R1%_ss.fq.gz})_ss
+  echo -e "STAR will align:\t${R1}"
+
+    STAR \
+      --runThreadN ${CORES} \
+      --genomeDir ${REFS}/star \
+      --readFilesIn ${R1} \
+      --readFilesCommand gunzip -c \
+      --outFileNamePrefix ${ALIGNDATA}/bam/${BNAME} \
+      --outSAMtype BAM SortedByCoordinate
+
+  done
+
+## Move the log files into their own folder
+mv ${ALIGNDATA}/bam/*out ${ALIGNDATA}/log
+mv ${ALIGNDATA}/bam/*tab ${ALIGNDATA}/log
 
 ## Fastqc and indexing
 for BAM in ${ALIGNDATA}/bam/*_ss*.bam
@@ -123,23 +123,23 @@ for BAM in ${ALIGNDATA}/bam/*_ss*.bam
 ## featureCounts
 ##--------------------------------------------------------------------------------------------##
 
-# ## Feature Counts - obtaining all sorted bam files
-# sampleList=`find ${ALIGNDATA}/bam -name "*_ss*out.bam" | tr '\n' ' '`
-#
-# ## featureCounts needs an extracted gtf
-# zcat ${GTF} > temp.gtf
-#
-# ## Running featureCounts on the sorted bam files
-# featureCounts -Q 10 \
-#   -s 0 \
-#   -T ${CORES} \
-#   --fracOverlap 1 \
-#   -a temp.gtf \
-#   -o ${ALIGNDATA}/featureCounts/counts_ss.out ${sampleList}
-#
-# ## Remove the temp gtf
-# rm temp.gtf
-#
-# ## Storing the output in a single file
-# cut -f1,7- ${ALIGNDATA}/featureCounts/counts_ss.out | \
-# sed 1d > ${ALIGNDATA}/featureCounts/genes_ss.out
+## Feature Counts - obtaining all sorted bam files
+sampleList=`find ${ALIGNDATA}/bam -name "*_ss*out.bam" | tr '\n' ' '`
+
+## featureCounts needs an extracted gtf
+zcat ${GTF} > temp.gtf
+
+## Running featureCounts on the sorted bam files
+featureCounts -Q 10 \
+  -s 0 \
+  -T ${CORES} \
+  --fracOverlap 1 \
+  -a temp.gtf \
+  -o ${ALIGNDATA}/featureCounts/counts_ss.out ${sampleList}
+
+## Remove the temp gtf
+rm temp.gtf
+
+## Storing the output in a single file
+cut -f1,7- ${ALIGNDATA}/featureCounts/counts_ss.out | \
+sed 1d > ${ALIGNDATA}/featureCounts/genes_ss.out
