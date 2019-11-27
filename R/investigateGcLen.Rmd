@@ -1,0 +1,1156 @@
+---
+title: "Investigating GC content and Length"
+author: "Lachlan Baer"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    fig_width: 8
+    fig_height: 6
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  error = FALSE
+)
+knitr::opts_chunk$set()
+```
+
+# Global setup
+
+```{r}
+library(tidyverse)
+library(edgeR)
+library(AnnotationHub)
+library(magrittr)
+library(scales)
+library(GenomicRanges)
+library(cqn)
+library(fgsea)
+library(kableExtra)
+```
+
+```{r}
+if (interactive()) setwd(here::here("R"))
+theme_set(theme_bw())
+nCores <- min(12, detectCores() - 1)
+```
+
+## Gene GC content and length object
+
+```{r, cache = TRUE}
+# # Get GC content and lengths
+# gcTrans <- url("https://uofabioinformaticshub.github.io/Ensembl_GC/Release94/Danio_rerio.GRCz11.94.rds") %>%
+#   readRDS()
+# # Convert to the gene-level with average length, average GC, max length, and GC of longest transcript for all transcripts assigned to a single gene.
+# gcGene <- gcTrans %>%
+#   split(f = .$gene_id) %>%
+#   mclapply(function(x){
+#     gr <- reduce(x)
+#     df <- DataFrame(
+#       gene_id = unique(x$gene_id),
+#       gene_symbol = unique(x$gene_symbol),
+#       aveLength = round(mean(x$length),0) %>% as.integer(),
+#       aveGc = sum(x$length * x$gc) / sum(x$length),
+#       maxLength = max(x$length),
+#       longestGc = x$gc[which.max(x$length)[[1]]]
+#     )
+#     mcols(gr) <- df
+#     gr
+#   }, mc.cores = 4) %>%
+#   GRangesList() %>%
+#   unlist() %>%
+#   na.omit()
+# # This takes a reasonable amount of time
+# # Save as .rds file for faster loading
+# saveRDS("../files/gcGene.rds")
+gcGene <- readRDS("../files/gcGene.rds")
+```
+
+## GSEA ID conversion and pathways
+
+```{r}
+# Load id conversion file
+idConvert <- read_csv2("../files/zf2human_withEntrezIDs.csv") %>%
+  dplyr::select(Geneid = zfID, EntrezID = Entrez) %>%
+  mutate(EntrezID = as.character(EntrezID))
+# Create function to convert ids
+convertHsEG2Dr <- function(ids, df = idConvert){
+  dplyr::filter(df, EntrezID %in% ids)$Geneid
+}
+# Conversion of zebrafish ensembl ID to zebrafish symbol, for plotting on network analyses
+idConvertSymbol <- read_csv2("../files/zf2human_withEntrezIDs.csv") %>%
+  dplyr::select(label = zfID, symbol = zfName) %>%
+  na.omit() %>%
+  unique()
+```
+
+```{r}
+# Import hallmark human gene genesets and tidy the gene set names
+# .gmt file downloaded from:
+# http://software.broadinstitute.org/gsea/downloads.jsp 
+hallmark <- gmtPathways("../files/h.all.v6.2.entrez.gmt") %>%
+  mclapply(convertHsEG2Dr, mc.cores = 4) %>%
+  set_names(str_remove_all(names(.), "HALLMARK_"))
+```
+
+# 2019 data
+
+## Load data
+
+```{r}
+# Load counts analysed by feature counts
+counts_19 <- read_tsv("../2_alignedData/featureCounts/genes.out") %>%
+  set_colnames(basename(colnames(.))) %>%
+  set_colnames(str_remove(colnames(.), "Aligned.sortedByCoord.out.bam")) %>%
+  dplyr::select(Geneid, starts_with("W"), starts_with("Q"))
+```
+
+## Create DGEList
+
+```{r}
+# Create DGEList and calculate normalisaton factors
+dgeList_19 <- counts_19 %>%
+  as.data.frame() %>%
+  column_to_rownames("Geneid") %>%
+  DGEList() %>%
+  calcNormFactors()
+```
+
+```{r}
+# Set group variable
+dgeList_19$samples$group <- colnames(dgeList_19) %>%
+  str_extract("(W|Q)") %>%
+  factor(levels = c("W", "Q"))
+```
+
+## Add gene information
+
+```{r}
+# Add AnnotationHub and subset to search for zebrafish
+ah <- AnnotationHub()
+ah %>%
+  subset(species == "Danio rerio") %>%
+  subset(dataprovider == "Ensembl") %>%
+  subset(rdataclass == "EnsDb")
+```
+
+```{r}
+# Select correct Ensembl release
+ensDb <- ah[["AH64906"]]
+```
+
+```{r}
+# Extract GenomicRanges object from ensDb
+genesGR <- genes(ensDb)
+```
+
+```{r}
+# Remove redundant columns from mcols
+mcols(genesGR) <- mcols(genesGR)[c("gene_id", "gene_name", 
+                                   "gene_biotype", "entrezid")] %>%
+  as.data.frame() %>%
+  dplyr::select(-entrezid) %>%
+  left_join(as.data.frame(mcols(gcGene))) %>%
+  distinct(gene_id, .keep_all = TRUE) %>%
+  set_rownames(.$gene_id) %>%
+  DataFrame() %>%
+  .[names(genesGR),]
+```
+
+```{r}
+# Add genesGR to DGEList using rownames of DGEList to reorder the genesGR
+dgeList_19$genes <- genesGR[rownames(dgeList_19),]
+```
+
+## Data QC
+
+```{r}
+# Create logical vector of genes to keep that fit criteria
+genes2keep_19 <- dgeList_19 %>%
+  cpm() %>%
+  is_greater_than(1) %>%
+  rowSums() %>%
+  is_weakly_greater_than(4)
+```
+
+```{r}
+# Create new DGEList of genes fitting criteria
+dgeFilt_19 <- dgeList_19[genes2keep_19,, keep.lib.sizes = FALSE] %>%
+  calcNormFactors()
+```
+
+## Without cqn
+
+### Differential expression
+
+```{r}
+# Create model matrix
+design_19 <- model.matrix(~group, data = dgeFilt_19$samples)
+```
+
+```{r}
+# Perform DE test
+topTable_19 <- estimateGLMCommonDisp(dgeFilt_19) %>%
+  glmFit(design_19) %>%
+  glmLRT(coef=2) %>%
+  topTags(n = Inf) %>%
+  .$table %>%
+  as_tibble() %>%
+  unite("Range", ID.start, ID.end, sep = "-") %>%
+  unite("Location", ID.seqnames, Range, ID.strand, sep = ":") %>%
+  set_colnames(str_remove(colnames(.), "ID.")) %>%
+  dplyr::select(
+    Geneid = gene_id, 
+    Symbol = gene_name,
+    AveExpr = logCPM, 
+    logFC, 
+    P.Value = PValue, 
+    FDR, 
+    Location,
+    aveLength,
+    aveGc,
+    maxLength,
+    longestGc
+  ) %>%
+  mutate(
+    DE = FDR < 0.05,
+    RankStat = -sign(logFC)*log10(P.Value)
+  )
+if (!interactive()) {
+  topTable_19 %>%
+    dplyr::select(Geneid, Symbol, AveExpr, logFC, P.Value, FDR) %>%
+    dplyr::slice(1:20) %>%
+    kable(caption = "The 20 most differentially expressed genes") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+}
+```
+
+### GC content
+
+```{r, fig.cap = "Comparison of logFC and GC content before using cqn"}
+topTable_19 %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveGc, logFC)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "GC Content", 
+    title = "2019 data without cqn"
+  ) +
+  scale_color_manual(values = c("grey70", "red"))
+```
+
+```{r, fig.cap = "Comparison of ranking statistics and GC content before using cqn"}
+topTable_19 %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveGc, RankStat)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "GC Content", 
+    y = "Ranking Statistic", 
+    title = "2019 data without cqn"
+  ) +
+  scale_color_manual(values = c("grey70", "red"))
+```
+
+### Gene length
+
+```{r}
+topTable_19 %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveLength, logFC)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "Gene length",
+    title = "2019 data without cqn"
+  ) +
+  scale_color_manual(values = c("grey70", "red")) +
+  scale_x_log10(labels = comma)
+```
+
+```{r}
+topTable_19 %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveLength, RankStat)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "Gene Length", 
+    y = "Ranking Statistic",
+    title = "2019 data without cqn"
+  ) +
+  scale_color_manual(values = c("grey70", "red")) +
+  scale_x_log10(labels = comma)
+```
+
+### GSEA
+
+```{r}
+# Create named vector of gene level statistics 
+ranks_19 <- topTable_19 %>%
+  dplyr::arrange(RankStat) %>%
+  with(structure(RankStat, names = Geneid))
+```
+
+```{r}
+# Run GSEA
+fgsea_19 <- fgsea(hallmark, ranks_19, nperm=1e5) %>%
+  as_tibble() %>%
+  dplyr::rename(FDR = padj) %>%
+  mutate(bonferroni = p.adjust(pval, "bonferroni")) %>%
+  dplyr::arrange(pval)
+if (!interactive()) {
+  fgsea_19 %>%
+    dplyr::select(-leadingEdge) %>%
+    dplyr::slice(1:10) %>%
+    kable(caption = "The 10 most significantly enriched pathways") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+}
+```
+
+## With cqn
+
+### Run cqn 
+
+```{r}
+# Check which genes in dgeFilt have GC content and length in gcGene
+genes2keep_19cqn <- rownames(dgeFilt_19) %in% mcols(gcGene)$gene_id
+dgeFilt_19cqn <- dgeFilt_19[genes2keep_19cqn,, keep.lib.sizes = FALSE]
+```
+
+```{r}
+cqn_19 <- cqn(
+  dgeFilt_19cqn$counts, 
+  x = mcols(dgeFilt_19cqn$genes)$aveGc,
+  lengths = mcols(dgeFilt_19cqn$genes)$aveLength,
+  sizeFactors = dgeFilt_19cqn$samples$lib.size
+)
+```
+
+### Differential expression
+
+```{r}
+dgeFilt_19cqn$offset <- cqn_19$glm.offset
+design_19cqn <- model.matrix(~ group, data = dgeFilt_19cqn$samples)
+topTable_19cqn <- estimateGLMCommonDisp(dgeFilt_19cqn) %>%
+  glmFit(design_19cqn) %>%
+  glmLRT(coef=2) %>%
+  topTags(n = Inf) %>%
+  .$table %>%
+  as_tibble() %>%
+  unite("Range", ID.start, ID.end, sep = "-") %>%
+  unite("Location", ID.seqnames, Range, ID.strand, sep = ":") %>%
+  set_colnames(str_remove(colnames(.), "ID.")) %>%
+  dplyr::select(
+    Geneid = gene_id, 
+    Symbol = gene_name,
+    AveExpr = logCPM, 
+    logFC, 
+    P.Value = PValue, 
+    FDR, 
+    Location,
+    aveLength,
+    aveGc,
+    maxLength,
+    longestGc
+  ) %>%
+  mutate(
+    DE = FDR < 0.05,
+    RankStat = -sign(logFC)*log10(P.Value)
+  )
+if (!interactive()) {
+  topTable_19cqn %>%
+    dplyr::select(Geneid, Symbol, AveExpr, logFC, P.Value, FDR) %>%
+    dplyr::slice(1:20) %>%
+    kable(caption = "The 20 most differentially expressed genes") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+}
+```
+
+```{r}
+# Check similarity of genes
+topTable_19cqn$Geneid[topTable_19cqn$DE == TRUE] %in%
+  topTable_19$Geneid[topTable_19$DE == TRUE] %>% 
+  table()
+```
+
+### GC content
+
+```{r}
+topTable_19cqn %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveGc, logFC)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "GC Content",
+    title = "2019 data with cqn"
+  ) +
+  scale_color_manual(values = c("grey70", "red"))
+```
+
+```{r}
+topTable_19cqn %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveGc, RankStat)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "GC Content", 
+    y = "Ranking Statistic",
+    title = "2019 data with cqn"
+  ) +
+  scale_color_manual(values = c("grey70", "red"))
+```
+
+### Gene length
+
+```{r}
+topTable_19cqn %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveLength)) %>%
+  ggplot(aes(aveLength, logFC)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "Gene length",
+    title = "2019 data with cqn"
+  ) +
+  scale_color_manual(values = c("grey70", "red")) +
+  scale_x_log10(labels = comma)
+```
+
+```{r}
+topTable_19cqn %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveLength)) %>%
+  ggplot(aes(aveLength, RankStat)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "Gene Length", 
+    y = "Ranking Statistic",
+    title = "2019 data with cqn"
+  ) +
+  scale_color_manual(values = c("grey70", "red")) +
+  scale_x_log10(labels = comma)
+```
+
+### GSEA
+
+```{r}
+# Create named vector of gene level statistics 
+ranks_19cqn <- topTable_19cqn %>%
+  dplyr::arrange(RankStat) %>%
+  with(structure(RankStat, names = Geneid))
+```
+
+```{r}
+# Run GSEA
+fgsea_19cqn <- fgsea(hallmark, ranks_19cqn, nperm=1e5) %>%
+  as_tibble() %>%
+  dplyr::rename(FDR = padj) %>%
+  mutate(padj = p.adjust(pval, "bonferroni")) %>%
+  dplyr::arrange(pval)
+if (!interactive()) {
+  fgsea_19cqn %>%
+    dplyr::select(-leadingEdge) %>%
+    dplyr::slice(1:10) %>%
+    kable(caption = "The 10 most significantly enriched pathways") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+}
+```
+
+## Comparisons (for viewing)
+
+### Differential expression
+
+```{r, echo = FALSE}
+if (!interactive()) {
+  topTable_19 %>%
+    dplyr::select(Geneid, Symbol, AveExpr, logFC, P.Value, FDR) %>%
+    dplyr::slice(1:20) %>%
+    kable(caption = "Before cqn: The 20 most differentially expressed genes") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+}
+```
+
+```{r, echo = FALSE}
+if (!interactive()) {
+  topTable_19cqn %>%
+    dplyr::select(Geneid, Symbol, AveExpr, logFC, P.Value, FDR) %>%
+    dplyr::slice(1:20) %>%
+    kable(caption = "After cqn: The 20 most differentially expressed genes") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+}
+```
+
+### GC Content
+
+```{r, echo = FALSE}
+topTable_19 %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveGc, logFC)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "GC Content", 
+    title = "Before cqn: 2019 data"
+  ) +
+  scale_color_manual(values = c("grey70", "red"))
+topTable_19cqn %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveGc, logFC)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "GC Content",
+    title = "After cqn: 2019 data"
+  ) +
+  scale_color_manual(values = c("grey70", "red"))
+```
+
+```{r, echo = FALSE}
+topTable_19 %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveGc, RankStat)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "GC Content", 
+    y = "Ranking Statistic", 
+    title = "Before cqn: 2019 data"
+  ) +
+  scale_color_manual(values = c("grey70", "red"))
+topTable_19cqn %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveGc, RankStat)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "GC Content", 
+    y = "Ranking Statistic",
+    title = "After cqn: 2019 data"
+  ) +
+  scale_color_manual(values = c("grey70", "red"))
+```
+
+### Gene length
+
+```{r, echo = FALSE}
+topTable_19 %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveLength)) %>%
+  ggplot(aes(aveLength, logFC)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "Gene length",
+    title = "Before cqn: 2019 data"
+  ) +
+  scale_color_manual(values = c("grey70", "red")) +
+  scale_x_log10(labels = comma)
+topTable_19cqn %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveLength)) %>%
+  ggplot(aes(aveLength, logFC)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "Gene length",
+    title = "After cqn: 2019 data"
+  ) +
+  scale_color_manual(values = c("grey70", "red")) +
+  scale_x_log10(labels = comma)
+```
+
+```{r, echo = FALSE}
+topTable_19 %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveLength, RankStat)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "Gene Length", 
+    y = "Ranking Statistic",
+    title = "Before cqn: 2019 data"
+  ) +
+  scale_color_manual(values = c("grey70", "red")) +
+  scale_x_log10(labels = comma)
+topTable_19cqn %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveLength, RankStat)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "Gene Length", 
+    y = "Ranking Statistic",
+    title = "After cqn: 2019 data"
+  ) +
+  scale_color_manual(values = c("grey70", "red")) +
+  scale_x_log10(labels = comma)
+```
+
+### GSEA
+
+```{r, echo = FALSE}
+if (!interactive()) {
+  fgsea_19 %>%
+    dplyr::select(-leadingEdge) %>%
+    dplyr::slice(1:10) %>%
+    kable(caption = "Before cqn: The 10 most significantly enriched pathways") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+}
+```
+
+```{r, echo = FALSE}
+if (!interactive()) {
+  fgsea_19cqn %>%
+    dplyr::select(-leadingEdge) %>%
+    dplyr::slice(1:10) %>%
+    kable(caption = "After cqn: The 10 most significantly enriched pathways") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+}
+```
+
+# 2017 data
+
+## Setup conversion object
+
+```{r}
+# Create object for converting transcripts to genes
+transGR <- transcripts(ensDb)
+mcols(transGR) <- mcols(transGR)[c("tx_id", "gene_id")]
+trans2Gene <- tibble(
+  tx_id = transGR$tx_id,
+  gene_id = transGR$gene_id
+)
+```
+
+## Load data
+
+```{r}
+# Load counts from 2017 data obtained as a .rds from Nhi
+counts_17 <- read_rds("nhiData/6month_Normoxia.rds")
+```
+
+## Create DGEList
+
+```{r}
+# Create DGEList
+dgeList_17 <- counts_17$counts %>%
+  as.data.frame() %>%
+  rownames_to_column("tx_id") %>%
+  as_tibble() %>%
+  set_colnames(basename(colnames(.))) %>%
+  mutate(tx_id = str_remove_all(tx_id, "\\.[0-9]*$")) %>%
+  left_join(trans2Gene) %>%
+  group_by(gene_id) %>%
+  summarise_if(
+    .predicate = is.numeric,
+    .funs = sum
+  ) %>%
+  as.data.frame() %>%
+  column_to_rownames("gene_id") %>%
+  round() %>%
+  set_colnames(str_remove(colnames(.), "[0-9]_MORGAN_6")) %>%
+  set_colnames(str_remove(colnames(.), "PN")) %>%
+  set_colnames(str_remove(colnames(.), "_[RS].+")) %>%
+  set_colnames(str_replace(colnames(.), "P", "W")) %>%
+  DGEList(
+    group = colnames(.) %>%
+      str_replace_all("([WQ])(.+)", "\\1") %>%
+      str_replace_all("W", "WT") %>%
+      str_replace_all("Q", "Mut") %>%
+      factor(levels = c("WT", "Mut")),
+    genes = genesGR[rownames(.)]
+  ) %>%
+  calcNormFactors() 
+```
+
+## Data QC
+
+```{r}
+# Create logical vector of genes to keep that fit criteria
+genes2keep_17 <- dgeList_17 %>%
+  cpm() %>%
+  is_greater_than(1) %>%
+  rowSums() %>%
+  is_weakly_greater_than(4)
+```
+
+```{r}
+# Create new DGEList of genes fitting criteria
+dgeFilt_17 <- dgeList_17[genes2keep_17,, keep.lib.sizes = FALSE] %>%
+  calcNormFactors()
+```
+
+## Without cqn
+
+### Differential expression
+
+```{r}
+# Create model matrix
+design_17 <- model.matrix(~group, data = dgeFilt_17$samples)
+```
+
+```{r}
+# Perform DE test
+topTable_17 <-  estimateGLMCommonDisp(dgeFilt_17) %>%
+  glmFit(design_17) %>%
+  glmLRT(coef=2) %>%
+  topTags(n = Inf) %>%
+  .$table %>%
+  as_tibble() %>%
+  unite("Range", start, end, sep = "-") %>%
+  unite("Location", seqnames, Range, strand, sep = ":") %>%
+  set_colnames(str_remove(colnames(.), "ID.")) %>%
+  dplyr::select(
+    Geneid = gene_id, 
+    Symbol = gene_name,
+    AveExpr = logCPM, 
+    logFC, 
+    P.Value = PValue, 
+    FDR, 
+    Location,
+    aveLength,
+    aveGc,
+    maxLength,
+    longestGc
+  ) %>%
+  mutate(
+    DE = FDR < 0.05,
+    RankStat = -sign(logFC)*log10(P.Value)
+  )
+if (!interactive()) {
+  topTable_17 %>%
+    dplyr::select(Geneid, Symbol, AveExpr, logFC, P.Value, FDR) %>%
+    dplyr::slice(1:20) %>%
+    kable(caption = "The 20 most differentially expressed genes") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+}
+```
+
+
+### GC content
+
+```{r, fig.cap = "Comparison of logFC and GC content before using cqn"}
+topTable_17 %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveGc, logFC)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "GC Content",
+    title = "2017 data without cqn"
+  ) +
+  scale_color_manual(values = c("grey70", "red"))
+```
+
+```{r, fig.cap = "Comparison of ranking statistics and GC content before using cqn"}
+topTable_17 %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveGc, RankStat)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "GC Content", 
+    y = "Ranking Statistic",
+    title = "2017 data without cqn"
+  ) +
+  scale_color_manual(values = c("grey70", "red"))
+```
+
+### Gene length
+
+```{r, fig.cap = "Comparison of logFC and GC content before using cqn"}
+topTable_17 %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveLength)) %>%
+  ggplot(aes(aveLength, logFC)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "Gene length",
+    title = "2017 data without cqn"
+  ) +
+  scale_color_manual(values = c("grey70", "red")) +
+  scale_x_log10(labels = comma)
+```
+
+```{r, fig.cap = "Comparison of ranking statistics and GC content before using cqn"}
+topTable_17 %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveLength)) %>%
+  ggplot(aes(aveLength, RankStat)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "Gene Length", 
+    y = "Ranking Statistic",
+    title = "2017 data without cqn"
+  ) +
+  scale_color_manual(values = c("grey70", "red")) +
+  scale_x_log10(labels = comma)
+```
+
+### GSEA
+
+```{r}
+# Create named vector of gene level statistics 
+ranks_17 <- topTable_17 %>%
+  dplyr::arrange(RankStat) %>%
+  with(structure(RankStat, names = Geneid))
+```
+
+```{r}
+# Run GSEA
+fgsea_17 <- fgsea(hallmark, ranks_17, nperm=1e5) %>%
+  as_tibble() %>%
+  dplyr::rename(FDR = padj) %>%
+  mutate(bonferroni = p.adjust(pval, "bonferroni")) %>%
+  dplyr::arrange(pval)
+if (!interactive()) {
+  fgsea_17 %>%
+    dplyr::select(-leadingEdge) %>%
+    dplyr::slice(1:10) %>%
+    kable(caption = "The 10 most significantly enriched pathways") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+}
+```
+
+## With cqn
+
+### Run cqn 
+
+```{r}
+# Check which genes in dgeFilt have GC content and length in gcGene
+genes2keep_17cqn <- rownames(dgeFilt_17) %in% mcols(gcGene)$gene_id
+dgeFilt_17cqn <- dgeFilt_17[genes2keep_17cqn,, keep.lib.sizes = FALSE]
+```
+
+```{r}
+cqn_17 <- cqn(
+  dgeFilt_17cqn$counts, 
+  x = dgeFilt_17cqn$genes$aveGc,
+  lengths = dgeFilt_17cqn$genes$aveLength,
+  sizeFactors = dgeFilt_17cqn$samples$lib.size
+)
+```
+
+### Differential expression
+
+```{r}
+dgeFilt_17cqn$offset <- cqn_17$glm.offset
+design_17cqn <- model.matrix(~ group, data = dgeFilt_17cqn$samples)
+topTable_17cqn <- estimateGLMCommonDisp(dgeFilt_17cqn) %>%
+  glmFit(design_17cqn) %>%
+  glmLRT(coef=2) %>%
+  topTags(n = Inf) %>%
+  .$table %>%
+  as_tibble() %>%
+  unite("Range", start, end, sep = "-") %>%
+  unite("Location", seqnames, Range, strand, sep = ":") %>%
+  set_colnames(str_remove(colnames(.), "ID.")) %>%
+  dplyr::select(
+    Geneid = gene_id, 
+    Symbol = gene_name,
+    AveExpr = logCPM, 
+    logFC, 
+    P.Value = PValue, 
+    FDR, 
+    Location,
+    aveLength,
+    aveGc,
+    maxLength,
+    longestGc
+  ) %>%
+  mutate(
+    DE = FDR < 0.05,
+    RankStat = -sign(logFC)*log10(P.Value)
+  )
+if (!interactive()) {
+  topTable_17cqn %>%
+    dplyr::select(Geneid, Symbol, AveExpr, logFC, P.Value, FDR) %>%
+    dplyr::slice(1:20) %>%
+    kable(caption = "The 20 most differentially expressed genes") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+}
+```
+
+```{r}
+# Check similarity of genes
+topTable_17cqn$Geneid[topTable_17cqn$DE == TRUE] %in%
+  topTable_17$Geneid[topTable_17$DE == TRUE] %>% 
+  table()
+```
+
+### GC content
+
+```{r, fig.cap = "Comparison of logFC and GC content after using cqn"}
+topTable_17cqn %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveGc, logFC)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "GC Content",
+    title = "2017 data with cqn"
+  ) +
+  scale_color_manual(values = c("grey70", "red"))
+```
+
+```{r, fig.cap = "Comparison of ranking statistics and GC content after using cqn"}
+topTable_17cqn %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveGc, RankStat)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "GC Content", 
+    y = "Ranking Statistic",
+    title = "2017 data with cqn"
+  ) +
+  scale_color_manual(values = c("grey70", "red"))
+```
+
+### Gene length
+
+```{r, fig.cap = "Comparison of logFC and GC content after using cqn"}
+topTable_17cqn %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveLength)) %>%
+  ggplot(aes(aveLength, logFC)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "Gene length",
+    title = "2017 data with cqn"
+  ) +
+  scale_color_manual(values = c("grey70", "red")) +
+  scale_x_log10(labels = comma)
+```
+
+```{r, fig.cap = "Comparison of ranking statistics and GC content after using cqn"}
+topTable_17cqn %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveLength)) %>%
+  ggplot(aes(aveLength, RankStat)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "Gene Length", 
+    y = "Ranking Statistic",
+    title = "2017 data with cqn"
+  ) +
+  scale_color_manual(values = c("grey70", "red")) +
+  scale_x_log10(labels = comma)
+```
+
+### GSEA
+
+```{r}
+# Create named vector of gene level statistics 
+ranks_17cqn <- topTable_17cqn %>%
+  dplyr::arrange(RankStat) %>%
+  with(structure(RankStat, names = Geneid))
+```
+
+```{r}
+# Run GSEA
+fgsea_17cqn <- fgsea(hallmark, ranks_17cqn, nperm=1e5) %>%
+  as_tibble() %>%
+  dplyr::rename(FDR = padj) %>%
+  mutate(padj = p.adjust(pval, "bonferroni")) %>%
+  dplyr::arrange(pval)
+if (!interactive()) {
+  fgsea_17cqn %>%
+    dplyr::select(-leadingEdge) %>%
+    dplyr::slice(1:10) %>%
+    kable(caption = "The 10 most significantly enriched pathways") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+}
+```
+
+## Comparisons (for viewing)
+
+### Differential expression
+
+```{r, echo = FALSE}
+if (!interactive()) {
+  topTable_17 %>%
+    dplyr::select(Geneid, Symbol, AveExpr, logFC, P.Value, FDR) %>%
+    dplyr::slice(1:20) %>%
+    kable(caption = "Before cqn: The 20 most differentially expressed genes") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+}
+```
+
+```{r, echo = FALSE}
+if (!interactive()) {
+  topTable_17cqn %>%
+    dplyr::select(Geneid, Symbol, AveExpr, logFC, P.Value, FDR) %>%
+    dplyr::slice(1:20) %>%
+    kable(caption = "After cqn: The 20 most differentially expressed genes") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+}
+```
+
+### GC Content
+
+```{r, echo = FALSE}
+topTable_17 %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveGc, logFC)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "GC Content", 
+    title = "Before cqn: 2019 data"
+  ) +
+  scale_color_manual(values = c("grey70", "red"))
+topTable_17cqn %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveGc, logFC)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "GC Content",
+    title = "After cqn: 2019 data"
+  ) +
+  scale_color_manual(values = c("grey70", "red"))
+```
+
+```{r, echo = FALSE}
+topTable_17 %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveGc, RankStat)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "GC Content", 
+    y = "Ranking Statistic", 
+    title = "Before cqn: 2019 data"
+  ) +
+  scale_color_manual(values = c("grey70", "red"))
+topTable_17cqn %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveGc, RankStat)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "GC Content", 
+    y = "Ranking Statistic",
+    title = "After cqn: 2019 data"
+  ) +
+  scale_color_manual(values = c("grey70", "red"))
+```
+
+### Gene length
+
+```{r, echo = FALSE}
+topTable_17 %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveLength, logFC)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "Gene length",
+    title = "Before cqn: 2019 data"
+  ) +
+  scale_color_manual(values = c("grey70", "red")) +
+  scale_x_log10(labels = comma)
+topTable_17cqn %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveLength, logFC)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "Gene length",
+    title = "After cqn: 2019 data"
+  ) +
+  scale_color_manual(values = c("grey70", "red")) +
+  scale_x_log10(labels = comma)
+```
+
+```{r, echo = FALSE}
+topTable_17 %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveLength, RankStat)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "Gene Length", 
+    y = "Ranking Statistic",
+    title = "Before cqn: 2019 data"
+  ) +
+  scale_color_manual(values = c("grey70", "red")) +
+  scale_x_log10(labels = comma)
+topTable_17cqn %>%
+  dplyr::arrange(desc(P.Value)) %>%
+  dplyr::filter(!is.na(aveGc)) %>%
+  ggplot(aes(aveLength, RankStat)) +
+  geom_point(aes(colour = DE), alpha = 0.5, show.legend = FALSE) +
+  geom_smooth(se = FALSE) + 
+  labs(
+    x = "Gene Length", 
+    y = "Ranking Statistic",
+    title = "After cqn: 2019 data"
+  ) +
+  scale_color_manual(values = c("grey70", "red")) +
+  scale_x_log10(labels = comma)
+```
+
+### GSEA
+
+```{r, echo = FALSE}
+if (!interactive()) {
+  fgsea_17 %>%
+    dplyr::select(-leadingEdge) %>%
+    dplyr::slice(1:10) %>%
+    kable(caption = "Before cqn: The 10 most significantly enriched pathways") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+}
+```
+
+```{r, echo = FALSE}
+if (!interactive()) {
+  fgsea_17cqn %>%
+    dplyr::select(-leadingEdge) %>%
+    dplyr::slice(1:10) %>%
+    kable(caption = "After cqn: The 10 most significantly enriched pathways") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+}
+```

@@ -3,6 +3,8 @@ title: "kallistoDGE"
 author: "L Baer"
 date: "23/05/2019"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -20,14 +22,16 @@ library(magrittr)
 library(scales)
 library(pander)
 library(ggrepel)
+setwd("~/Documents/Bioinformatics/Projects/20190122_Q96K97_NoStress_RNASeq/R")
 ```
 
 ## Data setup
 ```{r catchKallisto}
 # Load files in with catchKallisto
 counts <- list.files(
-  path = "/fast/users/a1647910/20190122_Q96K97_NoStress_RNASeq/3_kallisto/",
-  full.names = TRUE) %>%
+  path = "../3_kallisto/",
+  full.names = TRUE
+) %>%
   catchKallisto
 ```
 This data set contains 9 files
