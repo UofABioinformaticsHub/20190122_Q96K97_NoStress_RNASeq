@@ -227,6 +227,10 @@ if (!interactive()) {
   topTable_19 %>%
     dplyr::select(Geneid, Symbol, AveExpr, logFC, P.Value, FDR) %>%
     dplyr::slice(1:20) %>%
+    mutate(
+      P.Value = sprintf("%.2e", P.Value),
+      FDR = sprintf("%.2e", FDR)
+    ) %>%
     kable(caption = "The 20 most differentially expressed genes") %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
 }
@@ -260,6 +264,7 @@ topTable_19 %>%
     y = "Ranking Statistic", 
     title = "2019 data without cqn"
   ) +
+  coord_cartesian(ylim = c(-10, 10)) +
   scale_color_manual(values = c("grey70", "red"))
 ```
 
@@ -292,6 +297,7 @@ topTable_19 %>%
     y = "Ranking Statistic",
     title = "2019 data without cqn"
   ) +
+  coord_cartesian(ylim = c(-10, 10)) +
   scale_color_manual(values = c("grey70", "red")) +
   scale_x_log10(labels = comma)
 ```
@@ -375,6 +381,10 @@ if (!interactive()) {
   topTable_19cqn %>%
     dplyr::select(Geneid, Symbol, AveExpr, logFC, P.Value, FDR) %>%
     dplyr::slice(1:20) %>%
+    mutate(
+      P.Value = sprintf("%.2e", P.Value),
+      FDR = sprintf("%.2e", FDR)
+    ) %>%
     kable(caption = "The 20 most differentially expressed genes") %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
 }
@@ -415,6 +425,7 @@ topTable_19cqn %>%
     y = "Ranking Statistic",
     title = "2019 data with cqn"
   ) +
+  coord_cartesian(ylim = c(-10, 10)) +
   scale_color_manual(values = c("grey70", "red"))
 ```
 
@@ -448,6 +459,7 @@ topTable_19cqn %>%
     title = "2019 data with cqn"
   ) +
   scale_color_manual(values = c("grey70", "red")) +
+  coord_cartesian(ylim = c(-10, 10)) +
   scale_x_log10(labels = comma)
 ```
 
@@ -485,6 +497,10 @@ if (!interactive()) {
   topTable_19 %>%
     dplyr::select(Geneid, Symbol, AveExpr, logFC, P.Value, FDR) %>%
     dplyr::slice(1:20) %>%
+    mutate(
+      P.Value = sprintf("%.2e", P.Value),
+      FDR = sprintf("%.2e", FDR)
+    ) %>%
     kable(caption = "Before cqn: The 20 most differentially expressed genes") %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
 }
@@ -495,6 +511,10 @@ if (!interactive()) {
   topTable_19cqn %>%
     dplyr::select(Geneid, Symbol, AveExpr, logFC, P.Value, FDR) %>%
     dplyr::slice(1:20) %>%
+    mutate(
+      P.Value = sprintf("%.2e", P.Value),
+      FDR = sprintf("%.2e", FDR)
+    ) %>%
     kable(caption = "After cqn: The 20 most differentially expressed genes") %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
 }
@@ -539,6 +559,7 @@ topTable_19 %>%
     y = "Ranking Statistic", 
     title = "Before cqn: 2019 data"
   ) +
+  coord_cartesian(ylim = c(-10, 10)) +
   scale_color_manual(values = c("grey70", "red"))
 topTable_19cqn %>%
   dplyr::arrange(desc(P.Value)) %>%
@@ -551,6 +572,7 @@ topTable_19cqn %>%
     y = "Ranking Statistic",
     title = "After cqn: 2019 data"
   ) +
+  coord_cartesian(ylim = c(-10, 10)) +
   scale_color_manual(values = c("grey70", "red"))
 ```
 
@@ -596,6 +618,7 @@ topTable_19 %>%
     title = "Before cqn: 2019 data"
   ) +
   scale_color_manual(values = c("grey70", "red")) +
+  coord_cartesian(ylim = c(-10, 10)) +
   scale_x_log10(labels = comma)
 topTable_19cqn %>%
   dplyr::arrange(desc(P.Value)) %>%
@@ -609,6 +632,7 @@ topTable_19cqn %>%
     title = "After cqn: 2019 data"
   ) +
   scale_color_manual(values = c("grey70", "red")) +
+  coord_cartesian(ylim = c(-10, 10)) +
   scale_x_log10(labels = comma)
 ```
 
@@ -747,6 +771,10 @@ if (!interactive()) {
   topTable_17 %>%
     dplyr::select(Geneid, Symbol, AveExpr, logFC, P.Value, FDR) %>%
     dplyr::slice(1:20) %>%
+    mutate(
+      P.Value = sprintf("%.2e", P.Value),
+      FDR = sprintf("%.2e", FDR)
+    ) %>%
     kable(caption = "The 20 most differentially expressed genes") %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
 }
@@ -781,6 +809,7 @@ topTable_17 %>%
     y = "Ranking Statistic",
     title = "2017 data without cqn"
   ) +
+  coord_cartesian(ylim = c(-10, 10)) +
   scale_color_manual(values = c("grey70", "red"))
 ```
 
@@ -813,6 +842,7 @@ topTable_17 %>%
     y = "Ranking Statistic",
     title = "2017 data without cqn"
   ) +
+  coord_cartesian(ylim = c(-10, 10)) +
   scale_color_manual(values = c("grey70", "red")) +
   scale_x_log10(labels = comma)
 ```
@@ -896,6 +926,10 @@ if (!interactive()) {
   topTable_17cqn %>%
     dplyr::select(Geneid, Symbol, AveExpr, logFC, P.Value, FDR) %>%
     dplyr::slice(1:20) %>%
+    mutate(
+      P.Value = sprintf("%.2e", P.Value),
+      FDR = sprintf("%.2e", FDR)
+    ) %>%
     kable(caption = "The 20 most differentially expressed genes") %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
 }
@@ -936,6 +970,7 @@ topTable_17cqn %>%
     y = "Ranking Statistic",
     title = "2017 data with cqn"
   ) +
+  coord_cartesian(ylim = c(-10, 10)) +
   scale_color_manual(values = c("grey70", "red"))
 ```
 
@@ -969,6 +1004,7 @@ topTable_17cqn %>%
     title = "2017 data with cqn"
   ) +
   scale_color_manual(values = c("grey70", "red")) +
+  coord_cartesian(ylim = c(-10, 10)) +
   scale_x_log10(labels = comma)
 ```
 
@@ -1006,6 +1042,10 @@ if (!interactive()) {
   topTable_17 %>%
     dplyr::select(Geneid, Symbol, AveExpr, logFC, P.Value, FDR) %>%
     dplyr::slice(1:20) %>%
+    mutate(
+      P.Value = sprintf("%.2e", P.Value),
+      FDR = sprintf("%.2e", FDR)
+    ) %>%
     kable(caption = "Before cqn: The 20 most differentially expressed genes") %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
 }
@@ -1016,6 +1056,10 @@ if (!interactive()) {
   topTable_17cqn %>%
     dplyr::select(Geneid, Symbol, AveExpr, logFC, P.Value, FDR) %>%
     dplyr::slice(1:20) %>%
+    mutate(
+      P.Value = sprintf("%.2e", P.Value),
+      FDR = sprintf("%.2e", FDR)
+    ) %>%
     kable(caption = "After cqn: The 20 most differentially expressed genes") %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
 }
@@ -1060,6 +1104,7 @@ topTable_17 %>%
     y = "Ranking Statistic", 
     title = "Before cqn: 2019 data"
   ) +
+  coord_cartesian(ylim = c(-10, 10)) +
   scale_color_manual(values = c("grey70", "red"))
 topTable_17cqn %>%
   dplyr::arrange(desc(P.Value)) %>%
@@ -1072,6 +1117,7 @@ topTable_17cqn %>%
     y = "Ranking Statistic",
     title = "After cqn: 2019 data"
   ) +
+  coord_cartesian(ylim = c(-10, 10)) +
   scale_color_manual(values = c("grey70", "red"))
 ```
 
@@ -1117,6 +1163,7 @@ topTable_17 %>%
     title = "Before cqn: 2019 data"
   ) +
   scale_color_manual(values = c("grey70", "red")) +
+  coord_cartesian(ylim = c(-10, 10)) +
   scale_x_log10(labels = comma)
 topTable_17cqn %>%
   dplyr::arrange(desc(P.Value)) %>%
@@ -1129,6 +1176,7 @@ topTable_17cqn %>%
     y = "Ranking Statistic",
     title = "After cqn: 2019 data"
   ) +
+  coord_cartesian(ylim = c(-10, 10)) +
   scale_color_manual(values = c("grey70", "red")) +
   scale_x_log10(labels = comma)
 ```
