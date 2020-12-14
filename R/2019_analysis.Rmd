@@ -36,6 +36,7 @@ library(RUVSeq)
 library(limma)
 library(gganimate)
 library(EDASeq)
+library(Gviz)
 ```
 
 ```{r}
@@ -319,8 +320,73 @@ topTable %>%
 # Summary of DE genes
 topTableDE <- topTable %>%
   dplyr::filter(FDR < 0.05) %>%
-  dplyr::select(Geneid, Symbol, AveExpr, logFC, P.Value, FDR) 
+  dplyr::select(Geneid, Symbol, AveExpr, logFC, P.Value, FDR)
 topTableDE %>% pander(style = "rmarkdown", split.tables = Inf)
+```
+
+### Manhattan plot
+
+```{r}
+topTableLoc <- dgeFilt %>%
+  estimateDisp(design = design) %>%
+  exactTest() %>%
+  topTags(n = Inf) %>%
+  .$table %>%
+  as_tibble() %>%
+  dplyr::select(
+    Geneid = ID.gene_id, 
+    Symbol = ID.gene_name,
+    AveExpr = logCPM, logFC, 
+    P.Value = PValue, 
+    FDR,
+    Entrez = ID.entrezid,
+    seqnames = ID.seqnames,
+    start = ID.start,
+    end = ID.end,
+    strand = ID.strand
+  ) %>%
+  mutate(
+    mid = (start + end) / 2,
+    DE = FDR < 0.05
+  )
+```
+
+```{r}
+man <- topTableLoc %>%
+  dplyr::filter(as.integer(seqnames) %in% seq(1, 25)) %>%
+  group_by(seqnames) %>%
+  summarise(chrLen = max(mid)) %>%
+  mutate(chrSt = cumsum(chrLen)-chrLen) %>%
+  dplyr::select(-chrLen) %>% 
+  left_join(topTableLoc) %>%
+  dplyr::arrange(seqnames, mid) %>% 
+  mutate(midCum = chrSt + mid)
+axis <- man %>%
+  group_by(seqnames) %>%
+  dplyr::arrange(seqnames) %>%
+  summarize(center = (max(midCum) + min(midCum)) / 2) %>%
+  mutate(
+    seqnames = as.numeric(seqnames),
+    colour = rep(c("grey40", "black"), length.out = 25),
+    colour = ifelse(seqnames == 17, "red", colour)
+  )
+```
+
+```{r}
+ggplot(man, aes(x = midCum, y = -log10(P.Value))) +
+  geom_point(aes(color=as.factor(seqnames)), alpha = 0.5, size = 1) +
+  scale_color_manual(values = axis$colour) +
+  scale_x_continuous(label = axis$seqnames, breaks = axis$center) +
+  scale_y_continuous(expand = c(0, 0)) +
+  coord_cartesian(ylim = c(0,8)) +
+  labs(x = "Chromosome", y = expression(paste(-log[10], "(p)"))) +
+  geom_text_repel(data = dplyr::filter(man, DE), aes(label = Symbol)) +
+  theme( 
+    legend.position="none",
+    panel.border = element_blank(),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank()
+  )
 ```
 
 ## GO Enrichment
@@ -1287,7 +1353,7 @@ dge2017$samples$AgeOxy <- paste0(
 dge2017$samples$AgeOxy <- factor(
   dge2017$samples$AgeOxy, 
   levels = c("0_6", "1_6", "0_24", "1_24")
-    )
+)
 pca2017 <- readRDS("../files/pca_analysis.rds")
 ```
 
@@ -1317,7 +1383,7 @@ pca2017$x %>%
                                 "6 months, Hypoxia", 
                                 "24 months, Normoxia", 
                                 "24 months, Hypoxia")) +
-
+  
   # geom_text_repel() +
   labs(x = paste0("PC1 (", percent(summary(pca)$importance[2, "PC1"]), ")"), 
        y = paste0("PC2 (", percent(summary(pca)$importance[2, "PC2"]), ")"), 
@@ -1416,7 +1482,7 @@ dgeListNhi <- kalCounts$counts %>%
   summarise_if(
     .predicate = is.numeric,
     .funs = sum
-    ) %>%
+  ) %>%
   as.data.frame() %>%
   column_to_rownames("gene_id") %>%
   round() %>%
@@ -2280,7 +2346,7 @@ genes2keepComb <- dgeListComb %>%
 ```{r}
 # Create new DGEList of genes fitting criteria
 dgeFiltComb <- dgeListComb[genes2keepComb,, 
-                                   keep.lib.sizes = FALSE] %>%
+                           keep.lib.sizes = FALSE] %>%
   calcNormFactors()
 ```
 
@@ -2370,15 +2436,20 @@ logFCComb %>%
       dplyr::filter(abs(logFC) > 2 | abs(logFCNhi) > 2),
     size = 3,
     colour = "red"
-    ) +
+  ) +
   geom_abline(slope = 1, intercept = 0, col = "blue") +
   geom_vline(xintercept = c(-1, 1), linetype = 2, colour = "grey50") +
   geom_hline(yintercept = c(-1, 1), linetype = 2, colour = "grey50") +
   labs(x = "logFC (2019 dataset)", 
-       y = "logFC (2017 dataset)") +
+       y = "logFC (2017 dataset)",
+       title = "logFC Comparison") +
   xlim(-4, 6) + ylim(-4, 6) +
   theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  theme(panel.background = element_rect(fill = "#c6cbd7"),
+        plot.background = element_rect(fill = "#c6cbd7", colour = "#c6cbd7"),
+        legend.background = element_rect(fill = "#c6cbd7"),
+        legend.key = element_rect(fill = "#c6cbd7"),
+        plot.title = element_text(hjust = 0.5))
 ```
 
 ## Meta Analysis
@@ -2882,7 +2953,7 @@ anim <- anim %>%
   coord_cartesian(
     xlim = c(-100, 100),
     ylim = c(-50, 50)
-    ) +
+  ) +
   transition_states(
     k,
     transition_length = 2,
@@ -3198,7 +3269,7 @@ logFCCombRUVs %>%
       dplyr::filter(abs(logFC) > 2 | abs(logFCNhi) > 2),
     size = 2.5,
     colour = "red"
-    ) +
+  ) +
   geom_abline(slope = 1, intercept = 0, col = "blue") +
   geom_vline(xintercept = c(-1, 1), linetype = 2, colour = "grey50") +
   geom_hline(yintercept = c(-1, 1), linetype = 2, colour = "grey50") +
